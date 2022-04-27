@@ -1,0 +1,17 @@
+[package]
+name = "dotenvs"
+version = "0.0.1"
+description = "A `dotenv` implementation for Rust"
+homepage = "https://github.com/arniu/dotenvs-rs"
+repository = "https://github.com/arniu/dotenvs-rs"
+keywords = ["environment", "env", "dotenv", "settings", "config"]
+license = "MIT"
+readme = "README.md"
+
+edition = "2018"
+
+[lib]
+name = "dotenv"
+
+[dev-dependencies]
+tempfile = "3"
