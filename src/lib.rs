@@ -9,6 +9,9 @@ mod dotenv;
 mod error;
 mod find;
 
+#[cfg(test)]
+mod tests;
+
 use std::env;
 use std::ffi::OsStr;
 use std::fs::File;
