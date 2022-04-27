@@ -5,11 +5,9 @@
 //! file, if available, and mashes those with the actual environment variables
 //! provided by the operating system.
 
-mod constant;
+mod dotenv;
 mod error;
 mod find;
-mod iter;
-mod parse;
 
 use std::env;
 use std::ffi::OsStr;
@@ -17,8 +15,8 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
 
+pub use crate::dotenv::Dotenv;
 pub use crate::error::*;
-pub use crate::iter::Iter;
 
 static START: Once = Once::new();
 
@@ -65,15 +63,13 @@ pub fn vars() -> env::Vars {
 /// Examples
 ///
 /// ```
-/// use dotenv;
 /// use std::env;
-/// use std::path::{Path};
 ///
-/// let my_path = env::home_dir().and_then(|a| Some(a.join("/.env"))).unwrap();
+/// let my_path = env::home_dir().map(|dir| dir.join(".env")).unwrap();
 /// dotenv::from_path(my_path.as_path());
 /// ```
 pub fn from_path<P: AsRef<Path>>(path: P) -> Result<()> {
-    from_path_iter(path).and_then(Iter::load)
+    from_path_iter(path).and_then(Dotenv::load)
 }
 
 /// Like `from_path`, but returns an iterator over variables instead of loading into environment.
@@ -81,20 +77,16 @@ pub fn from_path<P: AsRef<Path>>(path: P) -> Result<()> {
 /// Examples
 ///
 /// ```no_run
-/// use dotenv;
 /// use std::env;
-/// use std::path::{Path};
 ///
-/// let my_path = env::home_dir().and_then(|a| Some(a.join("/.env"))).unwrap();
-/// let iter = dotenv::from_path_iter(my_path.as_path()).unwrap();
-///
-/// for item in iter {
+/// let my_path = env::home_dir().map(|dir| dir.join(".env")).unwrap();
+/// for item in dotenv::from_path_iter(my_path.as_path()).unwrap() {
 ///   let (key, val) = item.unwrap();
 ///   println!("{}={}", key, val);
 /// }
 /// ```
-pub fn from_path_iter<P: AsRef<Path>>(path: P) -> Result<Iter<File>> {
-    Ok(Iter::new(File::open(path)?))
+pub fn from_path_iter<P: AsRef<Path>>(path: P) -> Result<Dotenv> {
+    Ok(Dotenv::new(File::open(path)?))
 }
 
 /// Loads the specified file from the environment's current directory or its parents in sequence.
@@ -115,22 +107,15 @@ pub fn from_filename<P: AsRef<Path>>(filename: P) -> Result<PathBuf> {
 ///
 /// # Examples
 ///
-/// ```
-/// dotenv::from_filename("custom.env").ok();
-/// ```
-///
-/// It is also possible to do the following, but it is equivalent to using `dotenv::dotenv()`,
-/// which is preferred.
-///
 /// ```no_run
-/// let iter = dotenv::from_filename_iter(".env").unwrap();
+/// let iter = dotenv::from_filename_iter(".env.local").unwrap();
 ///
 /// for item in iter {
 ///   let (key, val) = item.unwrap();
 ///   println!("{}={}", key, val);
 /// }
 /// ```
-pub fn from_filename_iter<P: AsRef<Path>>(filename: P) -> Result<Iter<File>> {
+pub fn from_filename_iter<P: AsRef<Path>>(filename: P) -> Result<Dotenv> {
     find::find(filename.as_ref()).and_then(from_path_iter)
 }
 
@@ -143,10 +128,7 @@ pub fn from_filename_iter<P: AsRef<Path>>(filename: P) -> Result<Iter<File>> {
 /// dotenv::dotenv().ok();
 /// ```
 pub fn dotenv() -> Result<PathBuf> {
-    let path = find::find_dotenv()?;
-    from_path_iter(&path)?.load()?;
-
-    Ok(path)
+    from_filename(".env")
 }
 
 /// Like `dotenv`, but returns an iterator over variables instead of loading into environment.
@@ -160,6 +142,6 @@ pub fn dotenv() -> Result<PathBuf> {
 ///   println!("{}={}", key, val);
 /// }
 /// ```
-pub fn dotenv_iter() -> Result<iter::Iter<File>> {
-    find::find_dotenv().and_then(from_path_iter)
+pub fn dotenv_iter() -> Result<Dotenv> {
+    from_filename_iter(".env")
 }

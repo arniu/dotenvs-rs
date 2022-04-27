@@ -1,33 +1,28 @@
 use std::collections::HashMap;
 
+use super::constant::*;
 use crate::error::*;
 
 // for readability's sake
 pub type ParsedLine = Result<Option<(String, String)>>;
 
-pub fn parse_line(
-    line: &str,
-    substitution_data: &mut HashMap<String, Option<String>>,
-) -> ParsedLine {
-    let mut parser = LineParser::new(line, substitution_data);
+pub fn parse_line(line: &str, context: &mut HashMap<String, Option<String>>) -> ParsedLine {
+    let mut parser = LineParser::new(line, context);
     parser.parse_line()
 }
 
 struct LineParser<'a> {
+    substitution: &'a mut HashMap<String, Option<String>>,
     original_line: &'a str,
-    substitution_data: &'a mut HashMap<String, Option<String>>,
     line: &'a str,
     pos: usize,
 }
 
 impl<'a> LineParser<'a> {
-    fn new(
-        line: &'a str,
-        substitution_data: &'a mut HashMap<String, Option<String>>,
-    ) -> LineParser<'a> {
+    fn new(line: &'a str, context: &'a mut HashMap<String, Option<String>>) -> LineParser<'a> {
         LineParser {
+            substitution: context,
             original_line: line,
-            substitution_data,
             line: line.trim_end(), // we don’t want trailing whitespace
             pos: 0,
         }
@@ -40,7 +35,7 @@ impl<'a> LineParser<'a> {
     fn parse_line(&mut self) -> ParsedLine {
         self.skip_whitespace();
         // if its an empty line or a comment, skip it
-        if self.line.is_empty() || self.line.starts_with('#') {
+        if self.line.is_empty() || self.line.starts_with(SHARP) {
             return Ok(None);
         }
 
@@ -48,7 +43,7 @@ impl<'a> LineParser<'a> {
         self.skip_whitespace();
 
         // export can be either an optional prefix or a key itself
-        if key == "export" {
+        if key == EXPORT {
             // here we check for an optional `=`, below we throw directly when it’s not found.
             if self.expect_equal().is_err() {
                 key = self.parse_key()?;
@@ -60,13 +55,13 @@ impl<'a> LineParser<'a> {
         }
         self.skip_whitespace();
 
-        if self.line.is_empty() || self.line.starts_with('#') {
-            self.substitution_data.insert(key.clone(), None);
+        if self.line.is_empty() || self.line.starts_with(SHARP) {
+            self.substitution.insert(key.clone(), None);
             return Ok(Some((key, String::new())));
         }
 
-        let parsed_value = parse_value(self.line, &mut self.substitution_data)?;
-        self.substitution_data
+        let parsed_value = parse_value(self.line, &mut self.substitution)?;
+        self.substitution
             .insert(key.clone(), Some(parsed_value.clone()));
 
         Ok(Some((key, parsed_value)))
@@ -93,7 +88,7 @@ impl<'a> LineParser<'a> {
     }
 
     fn expect_equal(&mut self) -> Result<()> {
-        if !self.line.starts_with('=') {
+        if !self.line.starts_with(EQUAL) {
             return Err(self.err());
         }
         self.line = &self.line[1..];
@@ -119,10 +114,7 @@ enum SubstitutionMode {
     EscapedBlock,
 }
 
-fn parse_value(
-    input: &str,
-    substitution_data: &mut HashMap<String, Option<String>>,
-) -> Result<String> {
+fn parse_value(input: &str, context: &mut HashMap<String, Option<String>>) -> Result<String> {
     let mut strong_quote = false; // '
     let mut weak_quote = false; // "
     let mut escaped = false;
@@ -178,7 +170,7 @@ fn parse_value(
                             substitution_mode = SubstitutionMode::EscapedBlock;
                         } else {
                             apply_substitution(
-                                substitution_data,
+                                context,
                                 &substitution_name.drain(..).collect::<String>(),
                                 &mut output,
                             );
@@ -198,7 +190,7 @@ fn parse_value(
                         if c == '}' {
                             substitution_mode = SubstitutionMode::None;
                             apply_substitution(
-                                substitution_data,
+                                context,
                                 &substitution_name.drain(..).collect::<String>(),
                                 &mut output,
                             );
@@ -248,7 +240,7 @@ fn parse_value(
         ))
     } else {
         apply_substitution(
-            substitution_data,
+            context,
             &substitution_name.drain(..).collect::<String>(),
             &mut output,
         );
@@ -257,31 +249,28 @@ fn parse_value(
 }
 
 fn apply_substitution(
-    substitution_data: &mut HashMap<String, Option<String>>,
-    substitution_name: &str,
+    context: &mut HashMap<String, Option<String>>,
+    name: &str,
     output: &mut String,
 ) {
-    if let Ok(environment_value) = std::env::var(substitution_name) {
-        output.push_str(&environment_value);
+    if let Ok(value) = std::env::var(name) {
+        output.push_str(&value);
+    } else if let Some(Some(value)) = context.get(name) {
+        output.push_str(&value);
     } else {
-        let stored_value = substitution_data
-            .get(substitution_name)
-            .unwrap_or(&None)
-            .to_owned();
-        output.push_str(&stored_value.unwrap_or_else(String::new));
-    };
+        // Not found the variable
+    }
 }
 
 #[cfg(test)]
-mod test {
-    use crate::iter::Iter;
-
-    use super::*;
+mod tests {
+    use super::super::Dotenv;
+    use crate::error::Result;
 
     #[test]
     fn test_parse_line_env() {
         // Note 5 spaces after 'KEY8=' below
-        let actual_iter = Iter::new(
+        let actual_iter = Dotenv::new(
             r#"
 KEY=1
 KEY2="2"
@@ -330,7 +319,7 @@ export   SHELL_LOVER=1
 
     #[test]
     fn test_parse_line_comment() {
-        let result: Result<Vec<(String, String)>> = Iter::new(
+        let result: Result<Vec<(String, String)>> = Dotenv::new(
             r#"
 # foo=bar
 #    "#
@@ -343,7 +332,7 @@ export   SHELL_LOVER=1
     #[test]
     fn test_parse_line_invalid() {
         // Note 4 spaces after 'invalid' below
-        let actual_iter = Iter::new(
+        let actual_iter = Dotenv::new(
             r#"
   invalid
 very bacon = yes indeed
@@ -361,7 +350,7 @@ very bacon = yes indeed
 
     #[test]
     fn test_parse_value_escapes() {
-        let actual_iter = Iter::new(
+        let actual_iter = Dotenv::new(
             r#"
 KEY=my\ cool\ value
 KEY2=\$sweet
@@ -394,7 +383,7 @@ KEY7="line 1\nline 2"
 
     #[test]
     fn test_parse_value_escapes_invalid() {
-        let actual_iter = Iter::new(
+        let actual_iter = Dotenv::new(
             r#"
 KEY=my uncool value
 KEY2="why
@@ -412,10 +401,10 @@ KEY4=h\8u
 
 #[cfg(test)]
 mod variable_substitution_tests {
-    use crate::iter::Iter;
+    use super::super::Dotenv;
 
     fn assert_parsed_string(input_string: &str, expected_parse_result: Vec<(&str, &str)>) {
-        let actual_iter = Iter::new(input_string.as_bytes());
+        let actual_iter = Dotenv::new(input_string.as_bytes());
         let expected_count = &expected_parse_result.len();
 
         let expected_iter = expected_parse_result
@@ -567,14 +556,14 @@ mod variable_substitution_tests {
 
 #[cfg(test)]
 mod error_tests {
+    use super::super::Dotenv;
     use crate::error::Error::LineParse;
-    use crate::iter::Iter;
 
     #[test]
     fn should_not_parse_unfinished_substitutions() {
         let wrong_value = ">${KEY{<";
 
-        let parsed_values: Vec<_> = Iter::new(
+        let parsed_values: Vec<_> = Dotenv::new(
             format!(
                 r#"
     KEY=VALUE
@@ -606,7 +595,7 @@ mod error_tests {
     fn should_not_allow_dot_as_first_character_of_key() {
         let wrong_key_value = ".Key=VALUE";
 
-        let parsed_values: Vec<_> = Iter::new(wrong_key_value.as_bytes()).collect();
+        let parsed_values: Vec<_> = Dotenv::new(wrong_key_value.as_bytes()).collect();
 
         assert_eq!(parsed_values.len(), 1);
 
@@ -621,7 +610,7 @@ mod error_tests {
     #[test]
     fn should_not_parse_illegal_format() {
         let wrong_format = r"<><><>";
-        let parsed_values: Vec<_> = Iter::new(wrong_format.as_bytes()).collect();
+        let parsed_values: Vec<_> = Dotenv::new(wrong_format.as_bytes()).collect();
 
         assert_eq!(parsed_values.len(), 1);
 
@@ -637,7 +626,7 @@ mod error_tests {
     fn should_not_parse_illegal_escape() {
         let wrong_escape = r">\f<";
         let parsed_values: Vec<_> =
-            Iter::new(format!("VALUE={}", wrong_escape).as_bytes()).collect();
+            Dotenv::new(format!("VALUE={}", wrong_escape).as_bytes()).collect();
 
         assert_eq!(parsed_values.len(), 1);
 
