@@ -7,7 +7,6 @@
 
 mod dotenv;
 mod error;
-mod find;
 
 #[cfg(test)]
 mod tests;
@@ -21,7 +20,7 @@ use std::sync::Once;
 pub use crate::dotenv::Dotenv;
 pub use crate::error::*;
 
-static START: Once = Once::new();
+static LOAD: Once = Once::new();
 
 /// After loading the dotenv file, fetches the environment variable key from the current process.
 ///
@@ -34,8 +33,8 @@ static START: Once = Once::new();
 /// let var = dotenv::var("FOO").unwrap();
 /// ```
 pub fn var<K: AsRef<OsStr>>(key: K) -> Result<String> {
-    START.call_once(|| {
-        dotenv().ok();
+    LOAD.call_once(|| {
+        load().ok();
     });
 
     env::var(key).map_err(Error::from)
@@ -54,8 +53,8 @@ pub fn var<K: AsRef<OsStr>>(key: K) -> Result<String> {
 /// let vars: Vec<(String, String)> = dotenv::vars().collect();
 /// ```
 pub fn vars() -> env::Vars {
-    START.call_once(|| {
-        dotenv().ok();
+    LOAD.call_once(|| {
+        load().ok();
     });
 
     env::vars()
@@ -69,10 +68,10 @@ pub fn vars() -> env::Vars {
 /// use std::env;
 ///
 /// let my_path = env::home_dir().map(|dir| dir.join(".env")).unwrap();
-/// dotenv::from_path(my_path.as_path());
+/// dotenv::load_path(my_path.as_path());
 /// ```
-pub fn from_path<P: AsRef<Path>>(path: P) -> Result<()> {
-    from_path_iter(path).and_then(Dotenv::load)
+pub fn load_path<P: AsRef<Path>>(path: P) -> Result<()> {
+    try_from_path(path).and_then(Dotenv::load)
 }
 
 /// Like `from_path`, but returns an iterator over variables instead of loading into environment.
@@ -83,12 +82,12 @@ pub fn from_path<P: AsRef<Path>>(path: P) -> Result<()> {
 /// use std::env;
 ///
 /// let my_path = env::home_dir().map(|dir| dir.join(".env")).unwrap();
-/// for item in dotenv::from_path_iter(my_path.as_path()).unwrap() {
+/// for item in dotenv::try_from_path(my_path.as_path()).unwrap() {
 ///   let (key, val) = item.unwrap();
 ///   println!("{}={}", key, val);
 /// }
 /// ```
-pub fn from_path_iter<P: AsRef<Path>>(path: P) -> Result<Dotenv> {
+pub fn try_from_path<P: AsRef<Path>>(path: P) -> Result<Dotenv> {
     Ok(Dotenv::new(File::open(path)?))
 }
 
@@ -97,13 +96,10 @@ pub fn from_path_iter<P: AsRef<Path>>(path: P) -> Result<Dotenv> {
 /// # Examples
 ///
 /// ```
-/// dotenv::from_filename(".env.local").ok();
+/// dotenv::load_filename(".env.local").ok();
 /// ```
-pub fn from_filename<P: AsRef<Path>>(filename: P) -> Result<PathBuf> {
-    let path = find::find(filename.as_ref())?;
-    from_path_iter(&path)?.load()?;
-
-    Ok(path)
+pub fn load_filename<P: AsRef<Path>>(filename: P) -> Result<PathBuf> {
+    find(filename.as_ref()).and_then(|path| load_path(&path).and(Ok(path)))
 }
 
 /// Like `from_filename`, but returns an iterator over variables instead of loading into environment.
@@ -111,40 +107,53 @@ pub fn from_filename<P: AsRef<Path>>(filename: P) -> Result<PathBuf> {
 /// # Examples
 ///
 /// ```no_run
-/// let iter = dotenv::from_filename_iter(".env.local").unwrap();
+/// let iter = dotenv::try_from_filename(".env.local").unwrap();
 ///
 /// for item in iter {
 ///   let (key, val) = item.unwrap();
 ///   println!("{}={}", key, val);
 /// }
 /// ```
-pub fn from_filename_iter<P: AsRef<Path>>(filename: P) -> Result<Dotenv> {
-    find::find(filename.as_ref()).and_then(from_path_iter)
+pub fn try_from_filename<P: AsRef<Path>>(filename: P) -> Result<Dotenv> {
+    find(filename.as_ref()).and_then(try_from_path)
 }
 
 /// This is usually what you want.
 /// It loads the .env file located in the environment's current directory or its parents in sequence.
 ///
 /// # Examples
+///
 /// ```
-/// use dotenv;
-/// dotenv::dotenv().ok();
+/// dotenv::load().ok();
 /// ```
-pub fn dotenv() -> Result<PathBuf> {
-    from_filename(".env")
+pub fn load() -> Result<PathBuf> {
+    load_filename(".env")
 }
 
 /// Like `dotenv`, but returns an iterator over variables instead of loading into environment.
 ///
 /// # Examples
-/// ```no_run
-/// use dotenv;
 ///
-/// for item in dotenv::dotenv_iter().unwrap() {
+/// ```no_run
+/// for item in dotenv::try_init().unwrap() {
 ///   let (key, val) = item.unwrap();
 ///   println!("{}={}", key, val);
 /// }
 /// ```
-pub fn dotenv_iter() -> Result<Dotenv> {
-    from_filename_iter(".env")
+pub fn try_init() -> Result<Dotenv> {
+    try_from_filename(".env")
+}
+
+/// Searches for `filename` in current dir and its ancestors
+fn find(filename: &Path) -> Result<PathBuf> {
+    let current_dir = env::current_dir()?;
+    fn path_not_found() -> Error {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "path not found").into()
+    }
+
+    current_dir
+        .ancestors()
+        .map(|dir| dir.join(filename))
+        .find(|path| path.is_file())
+        .ok_or_else(path_not_found)
 }

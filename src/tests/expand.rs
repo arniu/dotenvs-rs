@@ -142,7 +142,7 @@ fn consequent_substitutions() {
 #[test]
 fn consequent_substitutions_with_one_missing() {
     assert_parsed_string(
-    r#"
+        r#"
     KEY2=$KEY1_2
     KEY=>${KEY1}<>${KEY2}<
     "#,

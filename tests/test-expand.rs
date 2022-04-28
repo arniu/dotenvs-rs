@@ -4,7 +4,7 @@ use common::*;
 use dotenv::*;
 
 #[test]
-fn test_variable_substitutions() {
+fn test() {
     std::env::set_var("KEY", "value");
     std::env::set_var("KEY1", "value1");
 

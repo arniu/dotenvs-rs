@@ -27,8 +27,8 @@ impl<R: Read> Dotenv<R> {
 
     /// Loads all variables into the environment.
     pub fn load(self) -> Result<()> {
-        for item in self {
-            let (key, value) = item?;
+        for pair in self {
+            let (key, value) = pair?;
             if env::var(&key).is_err() {
                 env::set_var(&key, value);
             }
@@ -77,19 +77,19 @@ impl QuoteState {
         input.chars().fold(self, |curr, c| match curr {
             QuoteState::Escape => QuoteState::Close,
             QuoteState::Close => match c {
-                constant::SLASH => QuoteState::Escape,
+                constant::BACKSLASH => QuoteState::Escape,
                 constant::DOUBLE_QUOTE => QuoteState::WeakOpen,
                 constant::SINGLE_QUOTE => QuoteState::StrongOpen,
                 _ => QuoteState::Close,
             },
             QuoteState::WeakOpen => match c {
-                constant::SLASH => QuoteState::WeakOpenEscape,
+                constant::BACKSLASH => QuoteState::WeakOpenEscape,
                 constant::DOUBLE_QUOTE => QuoteState::Close,
                 _ => QuoteState::WeakOpen,
             },
             QuoteState::WeakOpenEscape => QuoteState::WeakOpen,
             QuoteState::StrongOpen => match c {
-                constant::SLASH => QuoteState::StrongOpenEscape,
+                constant::BACKSLASH => QuoteState::StrongOpenEscape,
                 constant::SINGLE_QUOTE => QuoteState::Close,
                 _ => QuoteState::StrongOpen,
             },

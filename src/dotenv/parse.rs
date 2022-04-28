@@ -60,7 +60,7 @@ impl<'a> LineParser<'a> {
             return Ok(Some((key, String::new())));
         }
 
-        let parsed_value = parse_value(self.line, &mut self.substitution)?;
+        let parsed_value = parse_value(self.line, self.substitution)?;
         self.substitution
             .insert(key.clone(), Some(parsed_value.clone()));
 
@@ -256,7 +256,7 @@ fn apply_substitution(
     if let Ok(value) = std::env::var(name) {
         output.push_str(&value);
     } else if let Some(Some(value)) = context.get(name) {
-        output.push_str(&value);
+        output.push_str(value);
     } else {
         // Not found the variable
     }

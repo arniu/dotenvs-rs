@@ -1,4 +1,3 @@
-
 use crate::error::Error::LineParse;
 use crate::Dotenv;
 
@@ -74,7 +73,7 @@ fn should_not_parse_illegal_escape() {
 
     if let Err(LineParse(wrong_value, index)) = &parsed_values[0] {
         assert_eq!(wrong_value, wrong_escape);
-        assert_eq!(*index, wrong_escape.find("\\").unwrap() + 1)
+        assert_eq!(*index, wrong_escape.find('\\').unwrap() + 1)
     } else {
         assert!(false, "Expected the second value not to be parsed")
     }
