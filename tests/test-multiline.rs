@@ -4,7 +4,7 @@ use common::*;
 use dotenv::*;
 
 #[test]
-fn test_multiline() {
+fn test() {
     let value = "-----BEGIN PRIVATE KEY-----\n-----END PRIVATE KEY-----\\n\\\"QUOTED\\\"";
     let weak = "-----BEGIN PRIVATE KEY-----\n-----END PRIVATE KEY-----\n\"QUOTED\"";
     let contents = format!(

@@ -1,31 +1,34 @@
+mod constant;
+mod expand;
+mod parse;
+
 use std::collections::HashMap;
 use std::env;
+use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 
-use crate::constant;
 use crate::error::*;
-use crate::parse;
 
-pub struct Iter<R> {
-    lines: QuotedLines<BufReader<R>>,
-    substitution_data: HashMap<String, Option<String>>,
+pub struct Dotenv<R = File> {
+    context: HashMap<String, Option<String>>,
+    lines: Quoted<BufReader<R>>,
 }
 
-impl<R: Read> Iter<R> {
-    pub(crate) fn new(reader: R) -> Iter<R> {
-        Iter {
-            lines: QuotedLines {
+impl<R: Read> Dotenv<R> {
+    pub(crate) fn new(reader: R) -> Dotenv<R> {
+        Dotenv {
+            context: HashMap::new(),
+            lines: Quoted {
                 buf: BufReader::new(reader),
             },
-            substitution_data: HashMap::new(),
         }
     }
 
-    /// Loads all variables found in the `reader` into the environment.
+    /// Loads all variables into the environment.
     pub fn load(self) -> Result<()> {
-        for item in self {
-            let (key, value) = item?;
+        for pair in self {
+            let (key, value) = pair?;
             if env::var(&key).is_err() {
                 env::set_var(&key, value);
             }
@@ -35,7 +38,27 @@ impl<R: Read> Iter<R> {
     }
 }
 
-struct QuotedLines<B> {
+impl<R: Read> Iterator for Dotenv<R> {
+    type Item = Result<(String, String)>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let line = match self.lines.next() {
+                Some(Ok(line)) => line,
+                Some(Err(err)) => return Some(Err(err)),
+                None => return None,
+            };
+
+            match parse::parse_line(&line, &mut self.context) {
+                Ok(Some(result)) => return Some(Ok(result)),
+                Ok(None) => {}
+                Err(err) => return Some(Err(err)),
+            }
+        }
+    }
+}
+
+struct Quoted<B> {
     buf: B,
 }
 
@@ -54,19 +77,19 @@ impl QuoteState {
         input.chars().fold(self, |curr, c| match curr {
             QuoteState::Escape => QuoteState::Close,
             QuoteState::Close => match c {
-                constant::SLASH => QuoteState::Escape,
+                constant::BACKSLASH => QuoteState::Escape,
                 constant::DOUBLE_QUOTE => QuoteState::WeakOpen,
                 constant::SINGLE_QUOTE => QuoteState::StrongOpen,
                 _ => QuoteState::Close,
             },
             QuoteState::WeakOpen => match c {
-                constant::SLASH => QuoteState::WeakOpenEscape,
+                constant::BACKSLASH => QuoteState::WeakOpenEscape,
                 constant::DOUBLE_QUOTE => QuoteState::Close,
                 _ => QuoteState::WeakOpen,
             },
             QuoteState::WeakOpenEscape => QuoteState::WeakOpen,
             QuoteState::StrongOpen => match c {
-                constant::SLASH => QuoteState::StrongOpenEscape,
+                constant::BACKSLASH => QuoteState::StrongOpenEscape,
                 constant::SINGLE_QUOTE => QuoteState::Close,
                 _ => QuoteState::StrongOpen,
             },
@@ -75,7 +98,7 @@ impl QuoteState {
     }
 }
 
-impl<B: BufRead> Iterator for QuotedLines<B> {
+impl<B: BufRead> Iterator for Quoted<B> {
     type Item = Result<String>;
 
     fn next(&mut self) -> Option<Result<String>> {
@@ -106,26 +129,6 @@ impl<B: BufRead> Iterator for QuotedLines<B> {
                     }
                 }
                 Err(e) => return Some(Err(Error::Io(e))),
-            }
-        }
-    }
-}
-
-impl<R: Read> Iterator for Iter<R> {
-    type Item = Result<(String, String)>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let line = match self.lines.next() {
-                Some(Ok(line)) => line,
-                Some(Err(err)) => return Some(Err(err)),
-                None => return None,
-            };
-
-            match parse::parse_line(&line, &mut self.substitution_data) {
-                Ok(Some(result)) => return Some(Ok(result)),
-                Ok(None) => {}
-                Err(err) => return Some(Err(err)),
             }
         }
     }
