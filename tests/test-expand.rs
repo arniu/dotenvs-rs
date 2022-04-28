@@ -8,56 +8,41 @@ fn test() {
     std::env::set_var("KEY", "value");
     std::env::set_var("KEY1", "value1");
 
-    let substitutions_to_test = [
+    let expr_list = [
         "$ZZZ", "$KEY", "$KEY1", "${KEY}1", "$KEY_U", "${KEY_U}", "\\$KEY",
     ];
 
-    let common_string = substitutions_to_test.join(">>");
+    let expected_list = [
+        "",
+        "value",
+        "value1",
+        "value1",
+        "value_U",
+        "value+UUID",
+        "$KEY",
+    ];
+
+    let expr = expr_list.join(">>");
+    let expected = expected_list.join(">>");
+
     let contents = format!(
         r#"
 KEY1=new_value1
-KEY_U=$KEY+valueU
+KEY_U=$KEY+UUID
 
-SUBSTITUTION_FOR_STRONG_QUOTES='{}'
-SUBSTITUTION_FOR_WEAK_QUOTES="{}"
-SUBSTITUTION_WITHOUT_QUOTES={}
+WITHOUT_QUOTES={}
+WEAK_QUOTED="{}"
+STRONG_QUOTED='{}'
 "#,
-        common_string, common_string, common_string
+        expr, expr, expr
     );
 
     with_dotenv(&contents, |_| {
         assert_eq!(var("KEY").unwrap(), "value");
         assert_eq!(var("KEY1").unwrap(), "value1");
-        assert_eq!(var("KEY_U").unwrap(), "value+valueU");
-        assert_eq!(
-            var("SUBSTITUTION_FOR_STRONG_QUOTES").unwrap(),
-            common_string
-        );
-        assert_eq!(
-            var("SUBSTITUTION_FOR_WEAK_QUOTES").unwrap(),
-            [
-                "",
-                "value",
-                "value1",
-                "value1",
-                "value_U",
-                "value+valueU",
-                "$KEY"
-            ]
-            .join(">>")
-        );
-        assert_eq!(
-            var("SUBSTITUTION_WITHOUT_QUOTES").unwrap(),
-            [
-                "",
-                "value",
-                "value1",
-                "value1",
-                "value_U",
-                "value+valueU",
-                "$KEY"
-            ]
-            .join(">>")
-        );
+        assert_eq!(var("KEY_U").unwrap(), "value+UUID");
+        assert_eq!(var("WITHOUT_QUOTES").unwrap(), expected);
+        assert_eq!(var("WEAK_QUOTED").unwrap(), expected);
+        assert_eq!(var("STRONG_QUOTED").unwrap(), expr);
     });
 }

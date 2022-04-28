@@ -1,9 +1,5 @@
-//! This crate provides a configuration loader in the style of the [ruby dotenv
-//! gem](https://github.com/bkeepers/dotenv). This library is meant to be used
-//! on development or testing environments in which setting environment
-//! variables is not practical. It loads environment variables from a .env
-//! file, if available, and mashes those with the actual environment variables
-//! provided by the operating system.
+//! It loads environment variables from a `.env` file, if available, and mashes
+//! those with the environment variables provided by the operating system.
 
 mod dotenv;
 mod error;
@@ -22,12 +18,16 @@ pub use crate::error::*;
 
 static LOAD: Once = Once::new();
 
-/// After loading the dotenv file, fetches the environment variable key from the current process.
+/// Load the `.env` file and fetch the environment variable key from the current process.
 ///
-/// The returned result is Ok(s) if the environment variable is present and is valid unicode. If the
-/// environment variable is not present, or it is not valid unicode, then Err will be returned.
+/// For more details, please visit [`load`] or [`std::env::var`].
 ///
-/// Examples:
+/// # NOTE
+///
+/// - The `.env` file will be loaded once, so it's cheap to call [`var`] again and again.
+/// - The error occurs in loading the `.env` file will be ignored.
+///
+/// # Examples
 ///
 /// ```no_run
 /// let var = dotenv::var("FOO").unwrap();
@@ -40,14 +40,16 @@ pub fn var<K: AsRef<OsStr>>(key: K) -> Result<String> {
     env::var(key).map_err(Error::from)
 }
 
-/// After loading the dotenv file, returns an iterator of (variable, value) pairs of strings,
+/// Load the `.env` file and return an iterator of (variable, value) pairs of strings,
 /// for all the environment variables of the current process.
 ///
 /// The returned iterator contains a snapshot of the process's environment variables at the
 /// time of this invocation, modifications to environment variables afterwards will not be
 /// reflected in the returned iterator.
 ///
-/// Examples:
+/// For more details, please visit [`load`] or [`std::env::vars`].
+///
+/// # Examples
 ///
 /// ```no_run
 /// let vars: Vec<(String, String)> = dotenv::vars().collect();
@@ -60,23 +62,23 @@ pub fn vars() -> env::Vars {
     env::vars()
 }
 
-/// Loads the file at the specified absolute path.
+/// Load file at the given `path` and then set environment variables.
 ///
-/// Examples
+/// # Examples
 ///
 /// ```
 /// use std::env;
 ///
 /// let my_path = env::home_dir().map(|dir| dir.join(".env")).unwrap();
-/// dotenv::load_path(my_path.as_path());
+/// dotenv::load_path(my_path.as_path()).ok();
 /// ```
 pub fn load_path<P: AsRef<Path>>(path: P) -> Result<()> {
     try_from_path(path).and_then(Dotenv::load)
 }
 
-/// Like `from_path`, but returns an iterator over variables instead of loading into environment.
+/// Create a [`Dotenv`] instance from the given `path`.
 ///
-/// Examples
+/// # Examples
 ///
 /// ```no_run
 /// use std::env;
@@ -91,7 +93,9 @@ pub fn try_from_path<P: AsRef<Path>>(path: P) -> Result<Dotenv> {
     Ok(Dotenv::new(File::open(path)?))
 }
 
-/// Loads the specified file from the environment's current directory or its parents in sequence.
+/// Load the given `filename` and then set environment variables.
+///
+/// It will search for the given `filename` in the current directory or its parents in sequence.
 ///
 /// # Examples
 ///
@@ -99,27 +103,27 @@ pub fn try_from_path<P: AsRef<Path>>(path: P) -> Result<Dotenv> {
 /// dotenv::load_filename(".env.local").ok();
 /// ```
 pub fn load_filename<P: AsRef<Path>>(filename: P) -> Result<PathBuf> {
-    find(filename.as_ref()).and_then(|path| load_path(&path).and(Ok(path)))
+    search(filename.as_ref()).and_then(|path| load_path(&path).and(Ok(path)))
 }
 
-/// Like `from_filename`, but returns an iterator over variables instead of loading into environment.
+/// Create a [`Dotenv`] instance from the given `filename`
 ///
 /// # Examples
 ///
 /// ```no_run
-/// let iter = dotenv::try_from_filename(".env.local").unwrap();
+/// let envs = dotenv::try_from_filename(".env.local").unwrap();
 ///
-/// for item in iter {
-///   let (key, val) = item.unwrap();
-///   println!("{}={}", key, val);
+/// for (key, value) in envs.flatten() {
+///   println!("{}={}", key, value);
 /// }
 /// ```
 pub fn try_from_filename<P: AsRef<Path>>(filename: P) -> Result<Dotenv> {
-    find(filename.as_ref()).and_then(try_from_path)
+    search(filename.as_ref()).and_then(try_from_path)
 }
 
-/// This is usually what you want.
-/// It loads the .env file located in the environment's current directory or its parents in sequence.
+/// Load `.env` file and then set environment variables.
+///
+/// It will search for `.env` file in the current directory or its parents in sequence.
 ///
 /// # Examples
 ///
@@ -130,22 +134,22 @@ pub fn load() -> Result<PathBuf> {
     load_filename(".env")
 }
 
-/// Like `dotenv`, but returns an iterator over variables instead of loading into environment.
+/// Create a [`Dotenv`] instance from the `.env` file.
 ///
 /// # Examples
 ///
 /// ```no_run
 /// for item in dotenv::try_init().unwrap() {
-///   let (key, val) = item.unwrap();
-///   println!("{}={}", key, val);
+///   let (key, value) = item.unwrap();
+///   println!("{}={}", key, value);
 /// }
 /// ```
 pub fn try_init() -> Result<Dotenv> {
     try_from_filename(".env")
 }
 
-/// Searches for `filename` in current dir and its ancestors
-fn find(filename: &Path) -> Result<PathBuf> {
+/// Search for `filename` in the current directory or its parents in sequence.
+fn search(filename: &Path) -> Result<PathBuf> {
     let current_dir = env::current_dir()?;
     fn path_not_found() -> Error {
         std::io::Error::new(std::io::ErrorKind::NotFound, "path not found").into()
