@@ -15,7 +15,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Once;
 
-static START: Once = Once::new();
+static LOAD: Once = Once::new();
 
 /// Get the value for an environment variable.
 ///
@@ -31,7 +31,7 @@ static START: Once = Once::new();
 /// println!("{}", value);  // prints `/home/foo`
 /// ```
 pub fn var<K: AsRef<ffi::OsStr>>(key: K) -> Result<String> {
-    START.call_once(|| {
+    LOAD.call_once(|| {
         load().ok();
     });
 
@@ -49,7 +49,7 @@ pub fn var<K: AsRef<ffi::OsStr>>(key: K) -> Result<String> {
 /// let result: Vec<(String, String)> = dotenv::vars().collect();
 /// ```
 pub fn vars() -> env::Vars {
-    START.call_once(|| {
+    LOAD.call_once(|| {
         load().ok();
     });
 
