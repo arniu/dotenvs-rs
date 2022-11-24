@@ -1,2 +1,10 @@
+## rust
 /target
 /Cargo.lock
+
+## node
+/node_modules
+
+## IDEs
+.idea
+.vscode

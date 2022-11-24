@@ -3,14 +3,11 @@ use std::error;
 use std::fmt;
 use std::io;
 
-pub type Result<T> = std::result::Result<T, Error>;
-
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
     Io(io::Error),
-    EnvVar(env::VarError),
-    LineParse(String, usize),
+    Env(env::VarError),
 }
 
 impl Error {
@@ -21,16 +18,17 @@ impl Error {
 
         false
     }
+
+    pub(crate) fn not_found() -> Self {
+        io::Error::new(io::ErrorKind::NotFound, "path not found").into()
+    }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::Io(err) => err.fmt(fmt),
-            Error::EnvVar(err) => err.fmt(fmt),
-            Error::LineParse(text, index) => {
-                write!(fmt, "Failed to parse '{}' at line {}", text, index)
-            }
+            Error::Env(err) => err.fmt(fmt),
         }
     }
 }
@@ -39,8 +37,7 @@ impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             Error::Io(err) => Some(err),
-            Error::EnvVar(err) => Some(err),
-            _ => None,
+            Error::Env(err) => Some(err),
         }
     }
 }
@@ -53,6 +50,6 @@ impl From<io::Error> for Error {
 
 impl From<env::VarError> for Error {
     fn from(err: env::VarError) -> Self {
-        Error::EnvVar(err)
+        Error::Env(err)
     }
 }
