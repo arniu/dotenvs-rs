@@ -1,7 +1,7 @@
 [package]
 name = "dotenvs"
-version = "0.0.1"
-description = "A `dotenv` implementation for Rust"
+version = "0.1.0"
+description = "A correct dotenv library"
 repository = "https://github.com/arniu/dotenvs-rs"
 homepage = "https://github.com/arniu/dotenvs-rs"
 keywords = ["environment", "env", "dotenv", "config"]

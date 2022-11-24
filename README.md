@@ -1,13 +1,15 @@
 # dotenvs
 
-> This was extracted from <https://github.com/hoijui/dotenv>.
+[![crates.io](https://img.shields.io/crates/v/dotenvs.svg)](https://crates.io/crates/dotenvs)
+[![Released API docs](https://docs.rs/dotenvs/badge.svg)](https://docs.rs/dotenvs)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE.md)
 
-## Features
+A correct dotenv library, which supports:
 
 - Multiline values
 - Variable substitution
 
-### What rules does the parsing engine follow?
+## Parsing rules
 
 - `BASIC=basic`
 - empty lines are skipped
@@ -24,7 +26,7 @@
   line"
   ```
 
-### What rules does the expansion engine follow?
+## Expanding rules
 
 - `$KEY` will expand any env with the name `KEY`
 - `${KEY}` will expand any env with the name `KEY`
