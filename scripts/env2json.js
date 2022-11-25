@@ -6,7 +6,7 @@ const fs = require("fs");
 const DOTENV = /\.env$/;
 
 (function main() {
-    const dir = path.resolve(__dirname, "tests/fixtures");
+    const dir = path.resolve(__dirname, "../tests/fixtures");
     Promise.all(dotenvs(dir).map(convert)).then((files) => {
         console.debug(`done with ${files.length} files!\n`);
     });
