@@ -5,10 +5,10 @@ use std::env;
 
 #[test]
 fn test_var() -> anyhow::Result<()> {
-    let _cwd = make_test_dotenv()?;
+    let _t = with_basic_dotenv()?;
 
-    assert!(env::var("TEST_KEY").is_err());
-    assert_eq!(dotenv::var("TEST_KEY")?, "test_val");
+    assert!(env::var("BASIC").is_err());
+    assert_eq!(dotenv::var("BASIC")?, "basic");
 
     Ok(())
 }
