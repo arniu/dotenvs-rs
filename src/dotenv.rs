@@ -10,7 +10,7 @@ impl Dotenv {
         Self { buf }
     }
 
-    pub fn iter(&self) -> Iter {
+    pub fn iter(&self) -> Iter<'_> {
         Iter::new(&self.buf)
     }
 
@@ -53,9 +53,9 @@ impl<'a> Iter<'a> {
     fn resolve(&self, value: Value<'a>) -> Option<String> {
         match value {
             Value::Lit(text) => Some(text.to_string()),
-            Value::Var(name, default) => self
+            Value::Sub(name, fallback) => self
                 .resolve_var(name)
-                .or_else(|| default.and_then(|it| self.resolve(*it))),
+                .or_else(|| fallback.and_then(|it| self.resolve(*it))),
             Value::List(list) => Some(list.into_iter().flat_map(|it| self.resolve(it)).collect()),
         }
     }
@@ -66,7 +66,7 @@ impl<'a> Iterator for Iter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Ok((rest, maybe)) = parse(self.input) {
-            self.input = rest; // set next input
+            self.input = rest;
 
             if let Some((key, value)) = maybe {
                 if let Some(value) = self.resolve(value) {

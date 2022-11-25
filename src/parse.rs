@@ -25,7 +25,7 @@ use nom::IResult;
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Value<'a> {
     Lit(&'a str),
-    Var(&'a str, Option<Box<Value<'a>>>),
+    Sub(&'a str, Option<Box<Value<'a>>>),
     List(Vec<Value<'a>>),
 }
 
@@ -100,17 +100,17 @@ fn escape<'a>(expand_new_lines: bool) -> impl FnMut(&'a str) -> IResult<&'a str,
 }
 
 fn substitution(input: &str) -> IResult<&str, Value<'_>> {
-    let default = alt((substitution, map(is_not("}"), Value::Lit)));
+    let fallback = alt((substitution, map(is_not("}"), Value::Lit)));
 
     alt((
-        map(preceded(char('$'), key), |name| Value::Var(name, None)),
+        map(preceded(char('$'), key), |name| Value::Sub(name, None)),
         map(
             delimited(
                 tag("${"),
-                pair(key, opt(preceded(tag(":-"), default))),
+                pair(key, opt(preceded(tag(":-"), fallback))),
                 tag("}"),
             ),
-            |(name, maybe)| Value::Var(name, maybe.map(Box::new)),
+            |(name, maybe)| Value::Sub(name, maybe.map(Box::new)),
         ),
     ))(input)
 }
