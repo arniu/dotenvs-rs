@@ -52,7 +52,7 @@ fn kv_pair(input: &str) -> IResult<&str, Pair<'_>> {
 fn key(input: &str) -> IResult<&str, &str> {
     recognize(pair(
         alt((alpha1, tag("_"))),
-        many0_count(alt((alphanumeric1, tag("_"), tag(".")))),
+        many0_count(alt((alphanumeric1, tag("_")))),
     ))(input)
 }
 
