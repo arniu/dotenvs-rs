@@ -53,10 +53,12 @@ impl<'a> Iter<'a> {
         }
     }
 
+    /// resolve **NON-EMPTY** variable
     fn resolve_var(&self, name: &'a str) -> Option<String> {
         std::env::var(name)
             .ok()
             .or_else(|| self.resolved.get(name).cloned())
+            .filter(|it| !it.is_empty())
     }
 
     fn resolve(&self, value: Value<'a>) -> String {
