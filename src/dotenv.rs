@@ -1,6 +1,7 @@
 use crate::parse::*;
 use std::collections::HashMap;
 
+/// Dotenv content
 pub struct Dotenv {
     buf: String,
 }
@@ -10,14 +11,21 @@ impl Dotenv {
         Self { buf }
     }
 
+    /// Return an iterator over the dotenv.
     pub fn iter(&self) -> Iter<'_> {
         Iter::new(&self.buf)
     }
 
+    /// Load the dotenv into the current process's environment variables
+    ///
+    /// **NOTE**: The existing variables will be ignored.
     pub fn load(self) {
         self.set_vars(false)
     }
 
+    /// Load the dotenv into the current process's environment variables
+    ///
+    /// **NOTE**: This will override the existing variables.
     pub fn load_override(self) {
         self.set_vars(true)
     }
@@ -31,6 +39,7 @@ impl Dotenv {
     }
 }
 
+/// Dotenv iterator
 pub struct Iter<'a> {
     resolved: HashMap<&'a str, String>,
     input: &'a str,
@@ -50,13 +59,14 @@ impl<'a> Iter<'a> {
             .or_else(|| self.resolved.get(name).cloned())
     }
 
-    fn resolve(&self, value: Value<'a>) -> Option<String> {
+    fn resolve(&self, value: Value<'a>) -> String {
         match value {
-            Value::Lit(text) => Some(text.to_string()),
+            Value::Lit(text) => text.to_string(),
             Value::Sub(name, fallback) => self
                 .resolve_var(name)
-                .or_else(|| fallback.and_then(|it| self.resolve(*it))),
-            Value::List(list) => Some(list.into_iter().flat_map(|it| self.resolve(it)).collect()),
+                .or_else(|| fallback.map(|it| self.resolve(*it)))
+                .unwrap_or_default(),
+            Value::List(list) => list.into_iter().map(|it| self.resolve(it)).collect(),
         }
     }
 }
@@ -69,10 +79,9 @@ impl<'a> Iterator for Iter<'a> {
             self.input = rest;
 
             if let Some((key, value)) = maybe {
-                if let Some(value) = self.resolve(value) {
-                    self.resolved.insert(key, value.clone());
-                    return Some((key, value));
-                }
+                let resolved = self.resolve(value);
+                self.resolved.insert(key, resolved.clone());
+                return Some((key, resolved));
             }
 
             if rest.is_empty() {
