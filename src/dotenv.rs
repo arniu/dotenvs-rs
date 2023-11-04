@@ -59,28 +59,32 @@ impl<'a> Iter<'a> {
             Value::List(list) => Some(list.into_iter().flat_map(|it| self.resolve(it)).collect()),
         }
     }
+
+    pub fn try_next(&mut self) -> crate::Result<Option<(&'a str, String)>> {
+        while !self.input.is_empty() {
+            match parse(self.input) {
+                Ok((rest, maybe)) => {
+                    self.input = rest; // set next input
+
+                    if let Some((key, value)) = maybe {
+                        if let Some(value) = self.resolve(value) {
+                            self.resolved.insert(key, value.clone());
+                            return Ok(Some((key, value)));
+                        }
+                    }
+                }
+                Err(err) => return Err(crate::Error::Parse(format!("{err}"))),
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl<'a> Iterator for Iter<'a> {
     type Item = (&'a str, String);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Ok((rest, maybe)) = parse(self.input) {
-            self.input = rest; // set next input
-
-            if let Some((key, value)) = maybe {
-                if let Some(value) = self.resolve(value) {
-                    self.resolved.insert(key, value.clone());
-                    return Some((key, value));
-                }
-            }
-
-            if rest.is_empty() {
-                break;
-            }
-        }
-
-        None
+        self.try_next().unwrap_or_default()
     }
 }
 
