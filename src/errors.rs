@@ -8,6 +8,7 @@ use std::io;
 pub enum Error {
     Io(io::Error),
     Env(env::VarError),
+    Parse(String),
 }
 
 impl Error {
@@ -27,8 +28,9 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::Io(err) => err.fmt(fmt),
-            Error::Env(err) => err.fmt(fmt),
+            Error::Io(err) => fmt::Display::fmt(&err, fmt),
+            Error::Env(err) => fmt::Display::fmt(&err, fmt),
+            Error::Parse(err) => fmt::Display::fmt(&err, fmt),
         }
     }
 }
@@ -38,6 +40,7 @@ impl error::Error for Error {
         match self {
             Error::Io(err) => Some(err),
             Error::Env(err) => Some(err),
+            Error::Parse(_) => None,
         }
     }
 }
@@ -51,5 +54,11 @@ impl From<io::Error> for Error {
 impl From<env::VarError> for Error {
     fn from(err: env::VarError) -> Self {
         Error::Env(err)
+    }
+}
+
+impl<E: fmt::Debug> From<nom::Err<E>> for Error {
+    fn from(err: nom::Err<E>) -> Self {
+        Error::Parse(format!("{err}"))
     }
 }
