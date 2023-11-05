@@ -1,6 +1,4 @@
 use dotenv::Error;
-use std::collections::HashMap;
-use std::iter::{IntoIterator, Iterator};
 
 const BAD_ENV: &str = r#"
 A=foo bar
@@ -20,10 +18,8 @@ fn test_bad_env() -> anyhow::Result<()> {
             ("A", "foo bar".into()),
             ("B", "\"notenough".into()),
             ("C", "toomany".into())
-        ]
-        .into_iter()
-        .collect::<HashMap<_, _>>(),
-        env.iter().collect::<HashMap<_, _>>()
+        ],
+        env.iter().collect::<Vec<_>>()
     );
 
     let mut iter = env.iter();
@@ -32,13 +28,10 @@ fn test_bad_env() -> anyhow::Result<()> {
     assert_eq!(Some(("C", "toomany".into())), iter.try_next()?);
 
     // TODO: Use assert_matches! when it stabilizes: https://github.com/rust-lang/rust/issues/82775
-    match iter.try_next().unwrap_err() {
-        Error::Parse(err) => assert_eq!(
-            "Parsing Error: Error { input: \"'\\nD=valid\\nexport NOT_SET\\nE=valid\\n\", code: Tag }",
-            err
-        ),
-        err => panic!("Unexpected error variant: {err:?}", err = err),
-    }
+    assert!(matches!(
+        iter.try_next().unwrap_err(),
+        Error::Parse(err) if err == "Parsing Error: Error { input: \"'\\nD=valid\\nexport NOT_SET\\nE=valid\\n\", code: Tag }"
+    ));
 
     Ok(())
 }

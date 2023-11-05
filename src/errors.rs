@@ -1,7 +1,6 @@
 use std::env;
 use std::error;
 use std::fmt;
-use std::fmt::Display;
 use std::io;
 
 #[derive(Debug)]
@@ -29,9 +28,9 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::Io(err) => err.fmt(fmt),
-            Error::Env(err) => err.fmt(fmt),
-            Error::Parse(err) => err.fmt(fmt),
+            Error::Io(err) => fmt::Display::fmt(&err, fmt),
+            Error::Env(err) => fmt::Display::fmt(&err, fmt),
+            Error::Parse(err) => fmt::Display::fmt(&err, fmt),
         }
     }
 }
@@ -58,8 +57,8 @@ impl From<env::VarError> for Error {
     }
 }
 
-impl<I: Display> From<nom::error::Error<I>> for Error {
-    fn from(err: nom::error::Error<I>) -> Self {
+impl<E: fmt::Debug> From<nom::Err<E>> for Error {
+    fn from(err: nom::Err<E>) -> Self {
         Error::Parse(format!("{err}"))
     }
 }

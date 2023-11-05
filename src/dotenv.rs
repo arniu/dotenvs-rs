@@ -73,7 +73,7 @@ impl<'a> Iter<'a> {
                         }
                     }
                 }
-                Err(err) => return Err(crate::Error::Parse(format!("{err}"))),
+                Err(err) => return Err(err.into()),
             }
         }
         Ok(None)
