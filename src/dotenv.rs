@@ -7,7 +7,13 @@ pub struct Dotenv {
 }
 
 impl Dotenv {
-    pub(crate) fn new(buf: String) -> Self {
+    pub(crate) fn new(mut buf: String) -> Self {
+        // BOM removal (U+FEFF at start)
+        if buf.starts_with('\u{FEFF}') {
+            buf = buf[3..].to_string();
+        }
+        // Line-ending normalisation per spec: \r\n → \n, then \r → \n
+        buf = buf.replace("\r\n", "\n").replace('\r', "\n");
         Self { buf }
     }
 
@@ -49,7 +55,7 @@ impl<'a> Iter<'a> {
     pub(crate) fn new(input: &'a str) -> Self {
         Self {
             resolved: HashMap::new(),
-            input: strip_bom(input),
+            input,
         }
     }
 
@@ -77,25 +83,23 @@ impl<'a> Iterator for Iter<'a> {
     type Item = (&'a str, String);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Ok((rest, maybe)) = parse(self.input) {
-            self.input = rest;
-
-            if let Some((key, value)) = maybe {
-                let resolved = self.resolve(value);
-                self.resolved.insert(key, resolved.clone());
-                return Some((key, resolved));
-            }
-
-            if rest.is_empty() {
-                break;
+        while !self.input.is_empty() {
+            match parse(&mut self.input) {
+                Ok(Some((key, value))) => {
+                    let resolved = self.resolve(value);
+                    self.resolved.insert(key, resolved.clone());
+                    return Some((key, resolved));
+                }
+                Ok(None) => {
+                    // comment or blank line, continue
+                }
+                Err(_) => {
+                    // parse error
+                    break;
+                }
             }
         }
 
         None
     }
-}
-
-fn strip_bom(input: &str) -> &str {
-    // https://www.unicode.org/faq/utf_bom.html
-    input.strip_prefix('\u{FEFF}').unwrap_or(input)
 }
