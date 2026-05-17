@@ -52,8 +52,3 @@ jobs:
       - run: cargo publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Create GitHub Release
-        run: |
-          TAG="v$(grep '^version =' Cargo.toml | head -1 | cut -d'"' -f2)"
-          gh release create "$TAG" --generate-notes --verify-tag
