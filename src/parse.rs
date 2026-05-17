@@ -47,13 +47,15 @@ fn key<'a>(input: &mut &'a str) -> winnow::Result<&'a str> {
 }
 
 fn value<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
-    alt((
-        backtick_quoted,
-        single_quoted,
-        double_quoted,
-        unquoted_value,
-    ))
-    .parse_next(input)
+    if input.is_empty() {
+        return Ok(Value::List(vec![]));
+    }
+    match input.as_bytes()[0] as char {
+        '\'' => single_quoted.parse_next(input),
+        '"' => double_quoted.parse_next(input),
+        '`' => backtick_quoted.parse_next(input),
+        _ => unquoted_value.parse_next(input),
+    }
 }
 
 fn backtick_quoted<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
@@ -133,7 +135,7 @@ fn fallback_value<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
         0..,
         alt((
             substitution,
-            take_till(1.., |c: char| c == '}').map(Value::Lit),
+            take_till(1.., |c: char| c == '$' || c == '}').map(Value::Lit),
         )),
     )
     .map(Value::List)

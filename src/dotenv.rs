@@ -6,15 +6,23 @@ pub struct Dotenv {
     buf: String,
 }
 
+fn normalize_input(buf: String) -> String {
+    // Strip UTF-8 BOM (\u{FEFF}) if present — the parser does not expect it
+    let buf = if buf.starts_with('\u{FEFF}') {
+        buf[3..].to_string()
+    } else {
+        buf
+    };
+
+    // Normalise line endings per spec: \r\n → \n, then standalone \r → \n
+    buf.replace("\r\n", "\n").replace('\r', "\n")
+}
+
 impl Dotenv {
-    pub(crate) fn new(mut buf: String) -> Self {
-        // BOM removal (U+FEFF at start)
-        if buf.starts_with('\u{FEFF}') {
-            buf = buf[3..].to_string();
+    pub(crate) fn new(buf: String) -> Self {
+        Self {
+            buf: normalize_input(buf),
         }
-        // Line-ending normalisation per spec: \r\n → \n, then \r → \n
-        buf = buf.replace("\r\n", "\n").replace('\r', "\n");
-        Self { buf }
     }
 
     /// Return an iterator over the dotenv.
