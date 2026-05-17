@@ -39,3 +39,17 @@ pub fn with_multiline_dotenv() -> io::Result<(TempDir, Exps)> {
         include_str!("sample-multiline.json"),
     )
 }
+
+pub fn with_crlf_dotenv() -> io::Result<(TempDir, Exps)> {
+    make_test(
+        include_str!("sample-crlf.env"),
+        include_str!("sample-crlf.json"),
+    )
+}
+
+pub fn with_bom_dotenv() -> io::Result<(TempDir, Exps)> {
+    make_test(
+        include_str!("sample-bom.env"),
+        include_str!("sample-bom.json"),
+    )
+}

@@ -1,116 +1,144 @@
-use nom::branch::alt;
-use nom::bytes::complete::is_not;
-use nom::bytes::complete::tag;
-use nom::bytes::complete::take_till;
-use nom::character::complete::alpha1;
-use nom::character::complete::alphanumeric1;
-use nom::character::complete::char;
-use nom::character::complete::multispace0;
-use nom::character::complete::not_line_ending;
-use nom::character::complete::one_of;
-use nom::character::complete::space0;
-use nom::character::complete::space1;
-use nom::combinator::map;
-use nom::combinator::map_parser;
-use nom::combinator::opt;
-use nom::combinator::recognize;
-use nom::multi::many0;
-use nom::multi::many0_count;
-use nom::sequence::delimited;
-use nom::sequence::pair;
-use nom::sequence::preceded;
-use nom::sequence::separated_pair;
-use nom::IResult;
+use winnow::ascii::{multispace0, space0, space1, till_line_ending};
+use winnow::combinator::{alt, delimited, opt, preceded, repeat, separated_pair};
+use winnow::error::ContextError;
+use winnow::token::{one_of, take_till, take_while};
+use winnow::Parser;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Value<'a> {
     Lit(&'a str),
-    Var(&'a str, Option<Box<Value<'a>>>),
+    Sub(&'a str, Option<Box<Value<'a>>>),
     List(Vec<Value<'a>>),
 }
 
 pub(crate) type Pair<'a> = (&'a str, Value<'a>);
 
-pub(crate) fn parse(input: &str) -> IResult<&str, Option<Pair<'_>>> {
+pub(crate) fn parse<'a>(input: &mut &'a str) -> winnow::Result<Option<Pair<'a>>> {
     delimited(
         multispace0,
-        alt((map(comment, |_| None), map(kv_pair, Some))),
+        alt((comment.map(|_| None), kv_line.map(Some))),
         multispace0,
-    )(input)
+    )
+    .parse_next(input)
 }
 
-fn comment(input: &str) -> IResult<&str, &str> {
-    preceded(char('#'), is_not("\n\r"))(input)
+fn comment<'a>(input: &mut &'a str) -> winnow::Result<&'a str> {
+    preceded("#", till_line_ending).parse_next(input)
 }
 
-fn kv_pair(input: &str) -> IResult<&str, Pair<'_>> {
-    let export_ = pair(tag("export"), space1);
-    let _eq_ = delimited(space0, char('='), space0);
-    preceded(opt(export_), separated_pair(key, _eq_, value))(input)
+fn kv_line<'a>(input: &mut &'a str) -> winnow::Result<Pair<'a>> {
+    preceded(
+        opt(("export", space1)),
+        separated_pair(key, (space0, "=", space0), value),
+    )
+    .parse_next(input)
 }
 
-fn key(input: &str) -> IResult<&str, &str> {
-    recognize(pair(
-        alt((alpha1, tag("_"))),
-        many0_count(alt((alphanumeric1, tag("_"), tag(".")))),
-    ))(input)
+fn key<'a>(input: &mut &'a str) -> winnow::Result<&'a str> {
+    take_while(1.., |c: char| c.is_ascii_alphanumeric() || c == '_')
+        .verify(|s: &str| {
+            let first = s.chars().next().unwrap();
+            first.is_ascii_alphabetic() || first == '_'
+        })
+        .parse_next(input)
 }
 
-fn value(input: &str) -> IResult<&str, Value<'_>> {
-    alt((
-        map(quoted_with('`'), Value::Lit),
-        map(quoted_with('\''), Value::Lit),
-        map_parser(quoted_with('\"'), expand(true)),
-        map_parser(simple_value, expand(false)), // LAST one
-    ))(input)
+fn value<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
+    if input.is_empty() {
+        return Ok(Value::List(vec![]));
+    }
+    match input.as_bytes()[0] as char {
+        '\'' => single_quoted.parse_next(input),
+        '"' => double_quoted.parse_next(input),
+        '`' => backtick_quoted.parse_next(input),
+        _ => unquoted_value.parse_next(input),
+    }
 }
 
-fn simple_value(input: &str) -> IResult<&str, &str> {
-    not_line_ending(input).map(|(_, text)| {
-        let idx = text.find('#').unwrap_or(text.len());
-        (&input[idx..], input[..idx].trim())
-    })
+fn backtick_quoted<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
+    delimited("`", take_till(0.., |c| c == '`'), "`")
+        .map(Value::Lit)
+        .parse_next(input)
 }
 
-fn quoted_with<'a>(mark: char) -> impl FnMut(&'a str) -> IResult<&'a str, &'a str> {
-    delimited(char(mark), take_till(move |c| c == mark), char(mark))
+fn single_quoted<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
+    delimited("'", take_till(0.., |c| c == '\''), "'")
+        .map(Value::Lit)
+        .parse_next(input)
 }
 
-fn expand<'a>(expand_new_lines: bool) -> impl FnMut(&'a str) -> IResult<&'a str, Value<'a>> {
-    map(
-        many0(alt((
+fn double_quoted<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
+    let content = delimited("\"", take_till(0.., |c| c == '"'), "\"").parse_next(input)?;
+    let mut content_input = content;
+    expand(true).parse_next(&mut content_input)
+}
+
+fn unquoted_value<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
+    let raw = take_till(0.., |c: char| c == '\n' || c == '\r' || c == '#')
+        .map(|s: &str| s.trim())
+        .parse_next(input)?;
+    let mut raw_input = raw;
+    expand(false).parse_next(&mut raw_input)
+}
+
+fn expand<'a>(expand_new_lines: bool) -> impl Parser<&'a str, Value<'a>, ContextError> {
+    repeat(
+        0..,
+        alt((
             substitution,
             escape(expand_new_lines),
-            map(is_not("\\$"), Value::Lit), // LAST one
-        ))),
-        Value::List,
+            take_till(1.., |c: char| c == '\\' || c == '$').map(Value::Lit),
+        )),
     )
+    .map(Value::List)
 }
 
-fn escape<'a>(expand_new_lines: bool) -> impl FnMut(&'a str) -> IResult<&'a str, Value<'a>> {
+fn escape<'a>(expand_new_lines: bool) -> impl Parser<&'a str, Value<'a>, ContextError> {
     let new_line = if expand_new_lines { "\n" } else { "\\n" };
-    map(preceded(char('\\'), one_of("\\$n")), move |c| {
+    // double-quoted: \n \r \\ \$; unquoted: \\ \$ only (\n handled as literal)
+    preceded(
+        "\\",
+        one_of(if expand_new_lines {
+            &['\\', '$', 'n', 'r'][..]
+        } else {
+            &['\\', '$', 'n'][..]
+        }),
+    )
+    .map(move |c: char| {
         Value::Lit(match c {
             '\\' => "\\",
             '$' => "$",
             'n' => new_line,
+            'r' => "\r",
             _ => unreachable!(),
         })
     })
 }
 
-fn substitution(input: &str) -> IResult<&str, Value<'_>> {
-    let default = alt((substitution, map(is_not("}"), Value::Lit)));
+fn substitution<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
+    alt((substitution_braces, substitution_simple)).parse_next(input)
+}
 
-    alt((
-        map(preceded(char('$'), key), |name| Value::Var(name, None)),
-        map(
-            delimited(
-                tag("${"),
-                pair(key, opt(preceded(tag(":-"), default))),
-                tag("}"),
-            ),
-            |(name, maybe)| Value::Var(name, maybe.map(Box::new)),
-        ),
-    ))(input)
+fn substitution_simple<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
+    preceded("$", key)
+        .map(|name| Value::Sub(name, None))
+        .parse_next(input)
+}
+
+fn substitution_braces<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
+    delimited("${", (key, opt(preceded(":-", fallback))), "}")
+        .map(|(name, maybe): (&str, Option<Value>)| Value::Sub(name, maybe.map(Box::new)))
+        .parse_next(input)
+}
+
+fn fallback<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
+    repeat(
+        0..,
+        alt((
+            substitution,
+            take_till(1.., |c: char| c == '$' || c == '}').map(Value::Lit),
+        )),
+    )
+    .map(Value::List)
+    .parse_next(input)
 }
