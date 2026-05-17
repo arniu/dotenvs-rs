@@ -16,10 +16,7 @@ pub(crate) type Pair<'a> = (&'a str, Value<'a>);
 pub(crate) fn parse<'a>(input: &mut &'a str) -> winnow::Result<Option<Pair<'a>>> {
     delimited(
         multispace0,
-        alt((
-            comment.map(|_| None),
-            kv_line.map(Some),
-        )),
+        alt((comment.map(|_| None), kv_line.map(Some))),
         multispace0,
     )
     .parse_next(input)
@@ -99,7 +96,15 @@ fn expand<'a>(expand_new_lines: bool) -> impl Parser<&'a str, Value<'a>, Context
 fn escape<'a>(expand_new_lines: bool) -> impl Parser<&'a str, Value<'a>, ContextError> {
     let new_line = if expand_new_lines { "\n" } else { "\\n" };
     // double-quoted: \n \r \\ \$; unquoted: \\ \$ only (\n handled as literal)
-    preceded("\\", one_of(if expand_new_lines { &['\\', '$', 'n', 'r'][..] } else { &['\\', '$', 'n'][..] })).map(move |c: char| {
+    preceded(
+        "\\",
+        one_of(if expand_new_lines {
+            &['\\', '$', 'n', 'r'][..]
+        } else {
+            &['\\', '$', 'n'][..]
+        }),
+    )
+    .map(move |c: char| {
         Value::Lit(match c {
             '\\' => "\\",
             '$' => "$",
@@ -121,13 +126,9 @@ fn substitution_simple<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
 }
 
 fn substitution_braces<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
-    delimited(
-        "${",
-        (key, opt(preceded(":-", fallback))),
-        "}",
-    )
-    .map(|(name, maybe): (&str, Option<Value>)| Value::Sub(name, maybe.map(Box::new)))
-    .parse_next(input)
+    delimited("${", (key, opt(preceded(":-", fallback))), "}")
+        .map(|(name, maybe): (&str, Option<Value>)| Value::Sub(name, maybe.map(Box::new)))
+        .parse_next(input)
 }
 
 fn fallback<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {

@@ -8,8 +8,8 @@ pub struct Dotenv {
 
 fn normalize_input(buf: String) -> String {
     // Strip UTF-8 BOM (\u{FEFF}) if present — the parser does not expect it
-    let buf = if buf.starts_with('\u{FEFF}') {
-        buf[3..].to_string()
+    let buf = if let Some(stripped) = buf.strip_prefix('\u{FEFF}') {
+        stripped.to_string()
     } else {
         buf
     };
