@@ -1,0 +1,244 @@
+; dotenv — language specification
+;
+; A dotenv file defines environment variables as key-value pairs,
+; one per logical line.  Values support three quoting styles and
+; variable substitution, with semantics modelled after POSIX shell:
+;
+;   - single-quoted ('…') : literal, no substitution
+;   - double-quoted ("…") : substitution enabled, escape sequences
+;   - unquoted             : substitution enabled, escape sequences,
+;                            terminated by newline or inline comment
+;   - backtick-quoted (`…»): literal, no substitution (differs from
+;                            shell where backticks mean command subst.)
+
+; ============================================================
+; 1.  File Structure
+; ============================================================
+
+dotenv-file    = *( blank-line / comment-line / kv-line )
+
+kv-line        = [ export ] key sep value [ inline-comment ]
+                 line-ending
+
+blank-line     = line-ending
+comment-line   = "#" *NON-EOL line-ending
+
+line-ending    = newline / EOF
+newline        = LF / CRLF
+LF             = %x0A    ; line feed
+CRLF           = %x0D %x0A
+
+EOF            =          ; end of input
+
+; ============================================================
+; 2.  Whitespace
+; ============================================================
+
+WSP            = SP / HTAB
+SP             = %x20
+HTAB           = %x09
+
+; Leading/trailing WSP around the key, separator, and value
+; is stripped by the consumer.
+
+; ============================================================
+; 3.  Comments
+; ============================================================
+
+NON-EOL        = WSP / %x21-10FFFF   ; any char except CR, LF
+
+; Inline comment (only after unquoted values).
+; Inside quoted values, "#" is literal.
+
+; ============================================================
+; 4.  Export Prefix
+; ============================================================
+
+export         = "export" 1*WSP
+
+; ============================================================
+; 5.  Key
+; ============================================================
+
+key            = ( ALPHA / "_" ) *( ALPHA / DIGIT / "_" )
+
+ALPHA          = %x41-5A / %x61-7A    ; A-Z / a-z
+DIGIT          = %x30-39               ; 0-9
+
+; Key naming follows POSIX shell variable rules:
+;   - starts with letter or underscore
+;   - followed by letters, digits, underscores
+; Examples:  FOO  my_var  _secret  A1
+
+; ============================================================
+; 6.  Separator
+; ============================================================
+
+sep            = *WSP "=" *WSP
+
+; ============================================================
+; 7.  Value
+; ============================================================
+
+value          = single-valued / double-valued / backtick-valued / unquoted-valued
+
+; If no value is present (end-of-line after separator), the value
+; is the empty string.  e.g.  EMPTY=
+
+; ---- 7.1  Single-Quoted — literal, no substitution ----
+
+single-valued  = "'" *single-char "'"
+single-char    = %x00-26 / %x28-10FFFF
+               ; any character except "'" (%x27)
+               ; includes newlines — supports multi-line values
+               ; NO escape processing
+               ; NO variable substitution
+
+; ---- 7.2  Double-Quoted — substitution enabled, escapes ----
+
+double-valued  = DQUOTE *double-char DQUOTE
+double-char    = escape-seq
+               / substitution
+               / double-literal
+
+escape-seq     = %x5C ( "n" / "r" / "\" / "$" )
+               ; \n → LF  \r → CR  \\ → \  \$ → $
+
+double-literal = %x00-21 / %x23 / %x25-5B / %x5D-10FFFF
+               ; any character except:
+               ;   DQUOTE (%x22)  — delimits value
+               ;   "$"   (%x24)  — introduces substitution
+               ;   "\"   (%x5C)  — introduces escape
+               ; includes newlines — supports multi-line values
+
+DQUOTE         = %x22    ; double quote character
+
+; ---- 7.3  Backtick-Quoted — literal, no substitution ----
+
+backtick-val   = "`" *backtick-char "`"
+backtick-char  = %x00-5F / %x61-10FFFF
+               ; any character except "`" (%x60)
+               ; includes newlines — supports multi-line values
+               ; NO escape processing
+               ; NO variable substitution
+
+; ---- 7.4  Unquoted — substitution enabled, single-line ----
+
+unquoted-valued = 1*unquoted-char
+
+unquoted-char  = unquoted-escape
+               / substitution
+               / unquoted-literal
+
+unquoted-escape = %x5C ( "\" / "$" )
+               ; \\ → \   \$ → $
+
+unquoted-literal = %x09 / %x20-22 / %x25-5B / %x5D-7E / %x80-10FFFF
+               ; any printable ASCII except:
+               ;   "#"  (%x23)  — starts inline comment
+               ;   "$"  (%x24)  — introduces substitution
+               ;   "\"  (%x5C)  — introduces escape
+               ;   CR   (%x0D)  — line terminator
+               ;   LF   (%x0A)  — line terminator
+               ; leading/trailing WSP trimmed by consumer
+
+; ============================================================
+; 8.  Inline Comment
+; ============================================================
+
+inline-comment  = "#" *NON-EOL
+
+; "#" starts an inline comment only in unquoted-value context.
+; Inside single-quoted, double-quoted, or backtick-quoted values,
+; "#" is part of the value.
+
+; ============================================================
+; 9.  Variable Substitution
+; ============================================================
+;
+; Substitution is available inside double-quoted and unquoted values.
+; Single-quoted and backtick-quoted values do NOT perform substitution.
+;
+; An unrecognised variable expands to the empty string.
+; Recursive substitution is supported in default values.
+
+substitution    = simple-sub
+                / brace-sub
+
+simple-sub     = "$" key
+               ; e.g.  $FOO  $MY_VAR  $_secret
+               ; expands to the value of the named variable
+
+brace-sub      = "${" key [ ":-" fallback ] "}"
+               ; e.g.
+               ;   ${FOO}             — expand FOO
+               ;   ${FOO:-default}    — expand FOO, use "default" if unset/missing
+
+fallback       = *( substitution / fallback-text )
+
+fallback-text  = 1*fallback-char
+fallback-char  = %x00-23 / %x25-7A / %x7C / %x7E-10FFFF
+               ; any character except "}" (%x7D) which closes the brace,
+               ; and "$" (%x24) which starts a nested substitution
+
+; Escaped "$":  \$  produces a literal "$".
+; In unquoted values  :  \$ → $
+; In double-quoted     :  \$ → $  (via escape-seq)
+; In single-quoted     :  \$ → \$ (literal, no processing)
+
+; ============================================================
+; A.  Processing Rules (Consumer)
+; ============================================================
+;
+; The following transformations are applied after parsing:
+;
+;   1. Line-ending normalisation
+;        \r\n → \n   (before parsing)
+;        \r   → \n
+;
+;   2. Value unquoting
+;        For single/double/backtick-quoted: the surrounding matching
+;        quotes are removed.  The content between them is the raw value.
+;        Conditions:
+;          - opening quote is the first non-WSP character of the value
+;          - closing quote is the matching quote at the end
+;
+;   3. Escape processing (double-quoted and unquoted only)
+;        \n → LF    (double-quoted only)
+;        \r → CR    (double-quoted only)
+;        \\ → \
+;        \$ → $
+;
+;   4. Whitespace trimming (unquoted only)
+;        Leading and trailing WSP are removed from unquoted values.
+;
+;   5. Variable substitution (double-quoted and unquoted only)
+;        $VAR      — replaced with value of environment variable VAR
+;        ${VAR}    — same
+;        ${VAR:-x} — replaced with "x" if VAR is unset or empty
+;        Nested ${VAR:-${OTHER:-x}} is supported.
+;        Unrecognised variables expand to empty string.
+;
+;   6. Line continuation
+;        Not supported.  Use multi-line quoted values for values that
+;        span multiple lines.
+
+; ============================================================
+; B.  Appendix — Summary by Quote Style
+; ============================================================
+;
+; Feature                | Single ('…') | Double ("…") | Backtick (`…`) | Unquoted
+; -----------------------|--------------|--------------|----------------|---------
+; Multi-line             | yes          | yes          | yes            | no
+; Variable substitution  | no           | yes          | no             | yes
+; \n → LF                | no           | yes          | no             | no
+; \r → CR                | no           | yes          | no             | no
+; \\ → \                 | no           | yes          | no             | yes
+; \$ → $                 | no           | yes          | no             | yes
+; Inline comment (#)     | no           | no           | no             | yes
+; Leading WSP trimmed    | no*          | no*          | no*            | yes
+; Trailing WSP trimmed   | no*          | no*          | no*            | yes
+;
+; *:  The *WSP that precedes the opening quote is part of the value
+;     capture and is removed during unquoting.  Whitespace *inside*
+;     quotes is preserved verbatim.

@@ -1,0 +1,212 @@
+; dotenv — Node.js (npm dotenv) implementation
+; Based on motdotla/dotenv v16.x, the canonical Node.js dotenv parser.
+;
+; See also:
+;   Node.js built-in (parseEnv / --env-file):
+;     https://nodejs.org/api/cli.html#--env-fileconfig
+;     Simplified variant, no ":" separator, no "export" prefix,
+;     no escape inside quotes except \n\r in double-quoted.
+;
+; This spec documents the regex-based npm dotenv parser:
+;   LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)
+;          (\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?
+;          \s*(?:#.*)?(?:$|$)/mg
+
+; ============================================================
+; 1.  File Structure
+; ============================================================
+
+dotenv-file    = *( blank-line / comment-line / kv-line )
+
+blank-line     = *WSP newline
+
+newline        = LF / CRLF
+LF             = %x0A                    ; line feed
+CRLF           = %x0D %x0A              ; carriage return + line feed
+
+; Normalization: CR and CRLF are converted to LF before parsing.
+
+; ============================================================
+; 2.  Whitespace
+; ============================================================
+
+WSP            = SP / HTAB               ; inline whitespace
+OWS            = *WSP                    ; optional whitespace
+RWS            = 1*WSP                   ; required whitespace
+
+SP             = %x20                    ; space
+HTAB           = %x09                    ; horizontal tab
+
+; Leading whitespace on a line is ignored.
+; Leading/trailing whitespace of unquoted values is trimmed by consumer.
+
+; ============================================================
+; 3.  Comments
+; ============================================================
+
+comment-line   = OWS "#" *NON-EOL newline
+NON-EOL        = WSP / %x21-10FFFF       ; any char except CR, LF
+
+; Inline comment (valid only after unquoted values):
+;   KEY=value # this is a comment
+; The "#" is recognized as comment start if it appears in an unquoted-value context.
+; Inside single-quoted, double-quoted, or backtick-quoted values, "#" is literal.
+
+; ============================================================
+; 4.  Export Prefix (optional)
+; ============================================================
+
+export-prefix  = "export" RWS
+; Allowed for convenient shell sourcing:  export FOO=bar
+; The prefix is stripped from the key during parsing.
+
+; ============================================================
+; 5.  Key
+; ============================================================
+
+key            = 1*( ALPHA / DIGIT / "_" / "." / "-" )
+
+; ALPHA / DIGIT / "_" / "." / "-" is equivalent to \w plus "." and "-":
+;   [\w.-]+
+;
+; Examples valid:  FOO  FOO_BAR  foo.bar  my-app  FOO.BAR_BAZ-v1
+; Examples invalid:  $FOO  @key
+; Key is NOT allowed to be empty.
+
+ALPHA          = %x41-5A / %x61-7A     ; A-Z / a-z
+DIGIT          = %x30-39                ; 0-9
+
+; ============================================================
+; 6.  Separator
+; ============================================================
+
+separator      = eq-sep / colon-sep
+eq-sep         = OWS "=" OWS
+colon-sep      = RWS ":" RWS
+; "=" allows optional surrounding whitespace.
+; ":" requires at least one space before and after.
+
+; ============================================================
+; 7.  Value
+; ============================================================
+
+value          = single-quoted
+               / double-quoted
+               / backtick-quoted
+               / unquoted
+; If no value is present (end-of-line after separator), value is empty string.
+
+; ---- 7.1  Single-quoted ----
+
+single-quoted  = OWS %x27 *single-body %x27
+single-body    = escape-single / %x00-26 / %x28-5B / %x5D-10FFFF
+               ; any character except unescaped "'" (%x27)
+escape-single  = %x5C %x27              ; \'
+; Notes:
+;   * Leading OWS is captured and then trimmed by consumer.
+;   * \' produces a literal single quote in the value.
+;   * \\ is NOT specially processed; \\ is literal backslash.
+;   * No variable expansion is performed.
+
+; ---- 7.2  Double-quoted ----
+
+double-quoted  = OWS DQUOTE *double-body DQUOTE
+double-body    = escape-double / %x00-21 / %x23-5B / %x5D-10FFFF
+               ; any character except unescaped '"' (%x22)
+escape-double  = %x5C DQUOTE            ; \"
+; Post-processing (consumer):
+;   * \n → LF (%x0A)   : line feed
+;   * \r → CR (%x0D)   : carriage return
+;   * \" → "           : literal double quote
+;   * No other escape sequences are processed.
+;   * No variable expansion is performed.
+
+DQUOTE         = %x22                   ; double quote character
+
+; ---- 7.3  Backtick-quoted ----
+
+backtick       = %x60                   ; "`" backtick
+
+backtick-quoted = OWS backtick *backtick-body backtick
+backtick-body  = escape-backtick / %x00-5F / %x61-10FFFF
+               ; any character except unescaped "`" (%x60)
+escape-backtick = %x5C backtick          ; \`
+; Notes:
+;   * No escape sequences are processed.
+;   * No variable expansion is performed.
+
+; ---- 7.4  Unquoted ----
+
+unquoted       = 1*unquoted-char
+unquoted-char  = %x09 / %x20-21 / %x23-7E / %x80-10FFFF
+               ; printable characters except "#" (%x23) and CR/LF
+; Notes:
+;   * Leading/trailing whitespace trimmed by consumer.
+;   * "#" starts inline comment; the "#" and everything after is discarded.
+;   * No escape processing.
+;   * No variable expansion.
+
+; ============================================================
+; 8.  Inline Comment
+; ============================================================
+
+inline-comment = "#" *NON-EOL
+; Only recognized after unquoted values.
+; When the value is quoted (', ", `), "#" is part of the value.
+;
+; Examples:
+;   KEY=value # comment    → key="KEY", value="value"
+;   KEY="text#hash"        → key="KEY", value="text#hash"
+
+; ============================================================
+; 9.  Complete KV-Line
+; ============================================================
+
+kv-line        = OWS [export-prefix] key separator [value] OWS [inline-comment] newline
+
+; ============================================================
+; 10. Post-Processing Rules (consumer)
+; ============================================================
+;
+; After regex parsing, the npm dotenv applies these transformations:
+;
+;   1. Line ending normalization:
+;        \r\n → \n
+;        \r   → \n
+;
+;   2. Value trimming:
+;        value = captured_value.trim()
+;        Removes leading and trailing SP / HTAB.
+;
+;   3. Quote stripping:
+;        If value starts AND ends with matching quote characters
+;        ('...', "...", or `...`), the quotes are removed.
+;        The content between quotes is kept as-is.
+;
+;   4. Double-quote escape expansion:
+;        If the outer quote was '"', the value undergoes:
+;          \n → LF (%x0A)   (actual newline)
+;          \r → CR (%x0D)   (actual carriage return)
+;
+;   5. Key is NOT modified (no trim applied to key by the parser,
+;      but the regex ensures the key contains no whitespace).
+;
+;   6. No variable or command substitution is performed.
+;      For variable expansion (e.g., ${VAR} or $VAR), use
+;      the dotenv-expand package.
+
+; ============================================================
+; A.  Appendix — Difference with Node.js Built-in parseEnv
+; ============================================================
+;
+; Feature                       | npm dotenv | Node.js built-in
+; ------------------------------|------------|------------------
+; "export" prefix               | yes        | no
+; ":" separator                 | yes        | no
+; Escaped quotes inside strings | yes        | no
+; \n expansion in double-quotes | yes        | yes
+; \r expansion in double-quotes | yes        | yes
+; Multi-line quoted values      | no (per-line regex) | no
+; Inline comments (#)           | yes        | yes
+; Variable substitution         | no (separate pkg) | no
+; Key charset                   | [\w.-]+   | all chars before "="
