@@ -94,7 +94,7 @@ pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Dotenv> {
 
 /// Create [Dotenv] from [Read](std::io::Read).
 ///
-/// This is useful for loading environment variables from from IPC or the network.
+/// This is useful for loading environment variables from IPC or the network.
 pub fn from_read<R: Read>(read: R) -> Result<Dotenv> {
     let mut buf = String::new();
     let mut reader = io::BufReader::new(read);

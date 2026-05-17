@@ -8,13 +8,13 @@ keywords = ["environment", "env", "dotenv", "config"]
 include = ["/src", "/tests", "LICENSE.md"]
 license = "MIT"
 
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "dotenv"
 
 [dependencies]
-nom = "7.0"
+winnow = "1.0"
 
 [dev-dependencies]
 anyhow = "1.0"
