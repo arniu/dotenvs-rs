@@ -18,7 +18,7 @@ pub(crate) fn parse<'a>(input: &mut &'a str) -> winnow::Result<Option<Pair<'a>>>
         multispace0,
         alt((
             comment.map(|_| None),
-            kv_pair.map(Some),
+            kv_line.map(Some),
         )),
         multispace0,
     )
@@ -29,7 +29,7 @@ fn comment<'a>(input: &mut &'a str) -> winnow::Result<&'a str> {
     preceded("#", till_line_ending).parse_next(input)
 }
 
-fn kv_pair<'a>(input: &mut &'a str) -> winnow::Result<Pair<'a>> {
+fn kv_line<'a>(input: &mut &'a str) -> winnow::Result<Pair<'a>> {
     preceded(
         opt(("export", space1)),
         separated_pair(key, (space0, "=", space0), value),
@@ -123,14 +123,14 @@ fn substitution_simple<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
 fn substitution_braces<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
     delimited(
         "${",
-        (key, opt(preceded(":-", fallback_value))),
+        (key, opt(preceded(":-", fallback))),
         "}",
     )
     .map(|(name, maybe): (&str, Option<Value>)| Value::Sub(name, maybe.map(Box::new)))
     .parse_next(input)
 }
 
-fn fallback_value<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
+fn fallback<'a>(input: &mut &'a str) -> winnow::Result<Value<'a>> {
     repeat(
         0..,
         alt((
