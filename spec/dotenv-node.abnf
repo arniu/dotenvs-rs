@@ -1,16 +1,7 @@
-; dotenv — Node.js (npm dotenv) implementation
-; Based on motdotla/dotenv v16.x, the canonical Node.js dotenv parser.
+; dotenv — Node.js built-in (parseEnv / --env-file) implementation
+; https://nodejs.org/api/cli.html#--env-fileconfig
 ;
-; See also:
-;   Node.js built-in (parseEnv / --env-file):
-;     https://nodejs.org/api/cli.html#--env-fileconfig
-;     Simplified variant, no ":" separator, no "export" prefix,
-;     no escape inside quotes except \n\r in double-quoted.
-;
-; This spec documents the regex-based npm dotenv parser:
-;   LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)
-;          (\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?
-;          \s*(?:#.*)?(?:$|$)/mg
+; Parser in C++: src/node_dotenv.cc (Node.js mainline)
 
 ; ============================================================
 ; 1.  File Structure
@@ -32,7 +23,6 @@ CRLF           = %x0D %x0A              ; carriage return + line feed
 
 WSP            = SP / HTAB               ; inline whitespace
 OWS            = *WSP                    ; optional whitespace
-RWS            = 1*WSP                   ; required whitespace
 
 SP             = %x20                    ; space
 HTAB           = %x09                    ; horizontal tab
@@ -53,38 +43,37 @@ NON-EOL        = WSP / %x21-10FFFF       ; any char except CR, LF
 ; Inside single-quoted, double-quoted, or backtick-quoted values, "#" is literal.
 
 ; ============================================================
-; 4.  Export Prefix (optional)
+; 4.  Key
 ; ============================================================
 
-export-prefix  = "export" RWS
-; Allowed for convenient shell sourcing:  export FOO=bar
-; The prefix is stripped from the key during parsing.
+key            = 1*key-char
+key-char       = %x09 / %x20-3C / %x3E-10FFFF
+               ; any character except "=" (%x3D), LF (%x0A), CR (%x0D)
+               ; Leading/trailing WSP trimmed by parser, keys consisting
+               ; solely of WSP after trimming are treated as empty and
+               ; the line is skipped.
 
-; ============================================================
-; 5.  Key
-; ============================================================
-
-key            = 1*( ALPHA / DIGIT / "_" / "." / "-" )
-
-; ALPHA / DIGIT / "_" / "." / "-" is equivalent to \w plus "." and "-":
-;   [\w.-]+
-;
-; Examples valid:  FOO  FOO_BAR  foo.bar  my-app  FOO.BAR_BAZ-v1
-; Examples invalid:  $FOO  @key
-; Key is NOT allowed to be empty.
+; The parser does NOT validate key characters beyond rejecting "=" and
+; newlines.  Keys like "@foo!", "foo bar" (internal spaces), or
+; "foo.bar+baz" are technically accepted.  Portable dotenv files should
+; restrict keys to alphanumerics and underscores (see dotenv.abnf).
 
 ALPHA          = %x41-5A / %x61-7A     ; A-Z / a-z
 DIGIT          = %x30-39                ; 0-9
 
 ; ============================================================
+; 5.  Export Prefix
+; ============================================================
+
+export         = "export" 1*WSP
+; The C++ parser strips this prefix from the key.  Allowed for
+; convenient shell sourcing:  export FOO=bar
+
+; ============================================================
 ; 6.  Separator
 ; ============================================================
 
-separator      = eq-sep / colon-sep
-eq-sep         = OWS "=" OWS
-colon-sep      = RWS ":" RWS
-; "=" allows optional surrounding whitespace.
-; ":" requires at least one space before and after.
+separator      = OWS "=" OWS
 
 ; ============================================================
 ; 7.  Value
@@ -99,25 +88,20 @@ value          = single-quoted
 ; ---- 7.1  Single-quoted ----
 
 single-quoted  = OWS %x27 *single-body %x27
-single-body    = escape-single / %x00-26 / %x28-5B / %x5D-10FFFF
-               ; any character except unescaped "'" (%x27)
-escape-single  = %x5C %x27              ; \'
-; Notes:
-;   * Leading OWS is captured and then trimmed by consumer.
-;   * \' produces a literal single quote in the value.
-;   * \\ is NOT specially processed; \\ is literal backslash.
-;   * No variable expansion is performed.
+single-body    = %x00-26 / %x28-10FFFF
+               ; any character except "'" (%x27)
+               ; includes newlines — supports multi-line values
+               ; NO escape processing
+               ; NO variable expansion
 
 ; ---- 7.2  Double-quoted ----
 
 double-quoted  = OWS DQUOTE *double-body DQUOTE
-double-body    = escape-double / %x00-21 / %x23-5B / %x5D-10FFFF
-               ; any character except unescaped '"' (%x22)
-escape-double  = %x5C DQUOTE            ; \"
+double-body    = %x00-21 / %x23-10FFFF
+               ; any character except DQUOTE (%x22)
+               ; includes newlines — supports multi-line values
 ; Post-processing (consumer):
-;   * \n → LF (%x0A)   : line feed
-;   * \r → CR (%x0D)   : carriage return
-;   * \" → "           : literal double quote
+;   * \n → LF (%x0A)   : line feed (if found in value)
 ;   * No other escape sequences are processed.
 ;   * No variable expansion is performed.
 
@@ -128,12 +112,11 @@ DQUOTE         = %x22                   ; double quote character
 backtick       = %x60                   ; "`" backtick
 
 backtick-quoted = OWS backtick *backtick-body backtick
-backtick-body  = escape-backtick / %x00-5F / %x61-10FFFF
-               ; any character except unescaped "`" (%x60)
-escape-backtick = %x5C backtick          ; \`
-; Notes:
-;   * No escape sequences are processed.
-;   * No variable expansion is performed.
+backtick-body  = %x00-5F / %x61-10FFFF
+               ; any character except "`" (%x60)
+               ; includes newlines — supports multi-line values
+               ; NO escape processing
+               ; NO variable expansion
 
 ; ---- 7.4  Unquoted ----
 
@@ -162,13 +145,13 @@ inline-comment = "#" *NON-EOL
 ; 9.  Complete KV-Line
 ; ============================================================
 
-kv-line        = OWS [export-prefix] key separator [value] OWS [inline-comment] newline
+kv-line        = OWS [ export ] key separator [value] OWS [inline-comment] newline
 
 ; ============================================================
 ; 10. Post-Processing Rules (consumer)
 ; ============================================================
 ;
-; After regex parsing, the npm dotenv applies these transformations:
+; After parsing, the Node.js built-in applies these transformations:
 ;
 ;   1. Line ending normalization:
 ;        \r\n → \n
@@ -186,27 +169,26 @@ kv-line        = OWS [export-prefix] key separator [value] OWS [inline-comment] 
 ;   4. Double-quote escape expansion:
 ;        If the outer quote was '"', the value undergoes:
 ;          \n → LF (%x0A)   (actual newline)
-;          \r → CR (%x0D)   (actual carriage return)
 ;
-;   5. Key is NOT modified (no trim applied to key by the parser,
-;      but the regex ensures the key contains no whitespace).
+;   5. Key trimming:
+;        Leading and trailing SP / HTAB are removed from the key.
 ;
 ;   6. No variable or command substitution is performed.
 ;      For variable expansion (e.g., ${VAR} or $VAR), use
 ;      the dotenv-expand package.
 
 ; ============================================================
-; A.  Appendix — Difference with Node.js Built-in parseEnv
+; A.  Appendix — Difference with npm dotenv
 ; ============================================================
 ;
 ; Feature                       | npm dotenv | Node.js built-in
 ; ------------------------------|------------|------------------
-; "export" prefix               | yes        | no
+; "export" prefix               | yes        | yes
 ; ":" separator                 | yes        | no
 ; Escaped quotes inside strings | yes        | no
 ; \n expansion in double-quotes | yes        | yes
-; \r expansion in double-quotes | yes        | yes
-; Multi-line quoted values      | no (per-line regex) | no
+; \r expansion in double-quotes | yes        | no
+; Multi-line quoted values      | yes        | yes
 ; Inline comments (#)           | yes        | yes
 ; Variable substitution         | no (separate pkg) | no
 ; Key charset                   | [\w.-]+   | all chars before "="

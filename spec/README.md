@@ -10,15 +10,17 @@ The first implementation was [bkeepers/dotenv](https://github.com/bkeepers/doten
 
 dotenv has no official standard like an RFC. Implementation rules vary slightly between languages and tools, but the core syntax is largely consistent.
 
-Since Node.js v20.6.0 (stable since v20.12.0), `--env-file` support has been built in, with the parser implemented in C++ (`src/node_dotenv.cc`). Its behavior differs slightly from npm dotenv.
+Since Node.js v20.6.0 (stable since v24.10.0, v22.21.0 LTS), `--env-file` support has been built in, with the parser implemented in C++ (`src/node_dotenv.cc`). Its behavior differs slightly from npm dotenv.
 
 ## Specs in This Directory
 
-| File | Description |
-|------|-------------|
-| [`dotenv`](dotenv) | Language specification. Adds variable substitution (`$VAR` / `${VAR:-default}`) and multi-line values to the basic dotenv format. Key charset follows POSIX shell convention (`[A-Za-z_][A-Za-z0-9_]*`). Semantics follow POSIX shell for quoting (expansion in double quotes, literal in single quotes); backtick-quoted values are literal (unlike POSIX shell). |
-| [`dotenv-node.abnf`](dotenv-node.abnf) | [npm dotenv](https://github.com/motdotla/dotenv) (motdotla/dotenv v16.x) implementation spec. Based on per-line regex matching, no variable substitution. Appendix compares differences with Node.js built-in `parseEnv`. |
-| [`README.md`](README.md) | This file. |
+### [`dotenv.abnf`](dotenv.abnf)
+
+Language specification. Extends the Node.js built-in format with variable substitution (`$VAR` / `${VAR:-default}`) and a restricted POSIX-compatible key charset (`[A-Za-z_][A-Za-z0-9_]*`). Semantics follow POSIX shell quoting rules (expansion in double quotes, literal in single quotes); backtick-quoted values are literal (unlike POSIX shell).
+
+### [`dotenv-node.abnf`](dotenv-node.abnf)
+
+Node.js built-in `parseEnv` / `--env-file` implementation spec. C++ parser in [`src/node_dotenv.cc`](https://github.com/nodejs/node/blob/main/src/node_dotenv.cc).
 
 ### Key Reference Implementations
 

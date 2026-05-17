@@ -1,8 +1,11 @@
 ; dotenv — language specification
 ;
-; A dotenv file defines environment variables as key-value pairs,
-; one per logical line.  Values support three quoting styles and
-; variable substitution, with semantics modelled after POSIX shell:
+; Based on the Node.js built-in parseEnv (see dotenv-node.abnf),
+; extended with variable substitution ($VAR, ${VAR}, ${VAR:-default})
+; and a restricted POSIX-compatible key charset.
+;
+; Values support three quoting styles and variable substitution,
+; loosely modelled after POSIX shell quoting rules:
 ;
 ;   - single-quoted ('…') : literal, no substitution
 ;   - double-quoted ("…") : substitution enabled, escape sequences
@@ -10,6 +13,11 @@
 ;                            terminated by newline or inline comment
 ;   - backtick-quoted (`…»): literal, no substitution (differs from
 ;                            shell where backticks mean command subst.)
+;
+; Notable deviations from POSIX shell:
+;   - \n and \r expand to literal LF/CR in double-quoted values
+;   - backtick-quoted values are literal (not command substitution)
+;   - brace-default syntax supports ${VAR:-default} only
 
 ; ============================================================
 ; 1.  File Structure
@@ -17,7 +25,7 @@
 
 dotenv-file    = *( blank-line / comment-line / kv-line )
 
-kv-line        = [ export ] key sep value [ inline-comment ]
+kv-line        = [ export ] key sep [ value ] [ inline-comment ]
                  line-ending
 
 blank-line     = line-ending
@@ -28,7 +36,7 @@ newline        = LF / CRLF
 LF             = %x0A    ; line feed
 CRLF           = %x0D %x0A
 
-EOF            =          ; end of input
+EOF            = %x00    ; end of input (sentinel, never matches input)
 
 ; ============================================================
 ; 2.  Whitespace
@@ -80,7 +88,7 @@ sep            = *WSP "=" *WSP
 ; 7.  Value
 ; ============================================================
 
-value          = single-valued / double-valued / backtick-valued / unquoted-valued
+value          = single-valued / double-valued / backtick-val / unquoted-valued
 
 ; If no value is present (end-of-line after separator), the value
 ; is the empty string.  e.g.  EMPTY=
