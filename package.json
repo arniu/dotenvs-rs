@@ -1,11 +1,11 @@
 {
-    "name": "scripts",
-    "private": true,
-    "scripts": {
-        "env2json": "node scripts/env2json"
-    },
-    "dependencies": {
-        "dotenv": "^16.0.3",
-        "dotenv-expand": "^9.0.0"
-    }
+  "name": "scripts",
+  "private": true,
+  "scripts": {
+    "env2json": "node scripts/env2json"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.3",
+    "dotenv-expand": "^9.0.0"
+  }
 }
