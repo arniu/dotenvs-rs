@@ -3,14 +3,18 @@ use std::error;
 use std::fmt;
 use std::io;
 
+/// Errors that can occur when working with dotenv files.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
+    /// An I/O error, e.g. file not found or permission denied.
     Io(io::Error),
+    /// An environment variable error, e.g. non-unicode value.
     Env(env::VarError),
 }
 
 impl Error {
+    /// Returns `true` if this error was caused by a file not being found.
     pub fn is_not_found(&self) -> bool {
         if let Error::Io(err) = self {
             return err.kind() == io::ErrorKind::NotFound;

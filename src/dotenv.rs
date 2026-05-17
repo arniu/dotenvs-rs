@@ -1,7 +1,7 @@
 use crate::parse::*;
 use std::collections::HashMap;
 
-/// Dotenv content
+/// Parsed dotenv content
 pub struct Dotenv {
     buf: String,
 }
@@ -25,21 +25,20 @@ impl Dotenv {
         }
     }
 
-    /// Return an iterator over the dotenv.
+    /// Return an iterator over the dotenv entries.
     pub fn iter(&self) -> Iter<'_> {
         Iter::new(&self.buf)
     }
 
-    /// Load the dotenv into the current process's environment variables
+    /// Load the dotenv into the current process's environment variables.
     ///
-    /// **NOTE**: The existing variables will be ignored.
+    /// Existing variables are **not** overwritten.
     pub fn load(self) {
         self.set_vars(false)
     }
 
-    /// Load the dotenv into the current process's environment variables
-    ///
-    /// **NOTE**: This will override the existing variables.
+    /// Load the dotenv into the current process's environment variables,
+    /// **overwriting** any existing values.
     pub fn load_override(self) {
         self.set_vars(true)
     }
@@ -53,7 +52,11 @@ impl Dotenv {
     }
 }
 
-/// Dotenv iterator
+/// An iterator over the entries in a dotenv file.
+///
+/// Yields `(&str, String)` pairs. Variable substitutions are resolved
+/// lazily against both the process environment and previously-yielded
+/// entries within the same file.
 pub struct Iter<'a> {
     resolved: HashMap<&'a str, String>,
     input: &'a str,
@@ -67,7 +70,10 @@ impl<'a> Iter<'a> {
         }
     }
 
-    /// resolve **NON-EMPTY** variable
+    /// Resolve a variable name to a non-empty value.
+    ///
+    /// Checks the process environment first, then previously-resolved
+    /// entries from this file.
     fn resolve_var(&self, name: &'a str) -> Option<String> {
         std::env::var(name)
             .ok()

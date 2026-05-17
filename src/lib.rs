@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod dotenv;
 mod errors;
 mod parse;
@@ -19,16 +21,19 @@ static LOAD: Once = Once::new();
 
 /// Get the value for an environment variable.
 ///
-/// The value is `Ok(s)` if the environment variable is present and valid unicode.
+/// Automatically loads `.env` on first call (if present and not yet loaded).
+/// Values are read from the **current process environment**, not directly from
+/// the `.env` file — so any value set by a previous caller or the shell is visible.
 ///
-/// Note: this function gets values from any visible environment variable key,
-/// regardless of whether a *.env* file was loaded.
+/// # Errors
 ///
-/// # Examples:
+/// Returns [`Error::Env`] if the variable contains non-unicode data.
+///
+/// # Examples
 ///
 /// ```no_run
 /// let value = dotenv::var("HOME").unwrap();
-/// println!("{}", value);  // prints `/home/foo`
+/// println!("{}", value);
 /// ```
 pub fn var<K: AsRef<ffi::OsStr>>(key: K) -> Result<String> {
     LOAD.call_once(|| {
@@ -38,15 +43,21 @@ pub fn var<K: AsRef<ffi::OsStr>>(key: K) -> Result<String> {
     env::var(key).map_err(Error::from)
 }
 
-/// Return an iterator of `(key, value)` pairs for all environment variables of the current process.
-/// The returned iterator contains a snapshot of the process's environment variables at the time of invocation. Modifications to environment variables afterwards will not be reflected.
+/// Return an iterator of `(key, value)` pairs for all environment variables
+/// of the current process.
 ///
-/// # Examples:
+/// Automatically loads `.env` on first call. The returned iterator is a
+/// snapshot of the process environment at the time of invocation —
+/// subsequent modifications are not reflected.
+///
+/// # Examples
 ///
 /// ```no_run
 /// use std::io;
 ///
-/// let result: Vec<(String, String)> = dotenv::vars().collect();
+/// for (key, value) in dotenv::vars() {
+///     println!("{key}={value}");
+/// }
 /// ```
 pub fn vars() -> env::Vars {
     LOAD.call_once(|| {
@@ -65,9 +76,21 @@ fn find<P: AsRef<Path>>(filename: P) -> Result<PathBuf> {
         .ok_or_else(Error::not_found)
 }
 
-/// Load the *.env* file from the current directory or its parents.
+/// Load the `.env` file from the current directory or its parents.
 ///
-/// Fails if the file is not found.
+/// Searches upward from the current working directory until `.env` is found.
+/// The first call loads variables; subsequent calls are no-ops through
+/// [`Dotenv::load`] (existing variables are preserved).
+///
+/// # Errors
+///
+/// Returns [`Error::Io`] if no `.env` file is found or it cannot be read.
+///
+/// # Examples
+///
+/// ```no_run
+/// dotenv::load().ok();
+/// ```
 pub fn load() -> Result<PathBuf> {
     let path = find(".env")?;
     from_path(&path).map(|vars| {
@@ -76,25 +99,48 @@ pub fn load() -> Result<PathBuf> {
     })
 }
 
-/// Create [Dotenv] from the specified file.
+/// Create [`Dotenv`] from the specified file.
 ///
-/// Fails if the file is not found.
+/// Searches upward from the current working directory for the given filename.
+///
+/// # Errors
+///
+/// Returns [`Error::Io`] if the file is not found or cannot be read.
 pub fn from_filename<P: AsRef<Path>>(filename: P) -> Result<Dotenv> {
     let path = find(filename)?;
     from_path(path)
 }
 
-/// Create [Dotenv] from the specified path.
+/// Create [`Dotenv`] from the specified path.
 ///
-/// Fails if the file is not found.
+/// # Errors
+///
+/// Returns [`Error::Io`] if the file cannot be read.
 pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Dotenv> {
     let file = fs::File::open(path)?;
     from_read(file)
 }
 
-/// Create [Dotenv] from [Read](std::io::Read).
+/// Create [`Dotenv`] from any [`Read`] implementor.
 ///
-/// This is useful for loading environment variables from IPC or the network.
+/// This is useful for loading environment variables from in-memory buffers,
+/// IPC streams, or network connections.
+///
+/// # Errors
+///
+/// Returns [`Error::Io`] if reading from the source fails.
+///
+/// # Examples
+///
+/// ```
+/// use std::io::Cursor;
+///
+/// let input = Cursor::new(b"FOO=bar\nBAZ=qux\n");
+/// let dotenv = dotenv::from_read(input).unwrap();
+/// for (key, value) in dotenv.iter() {
+///     println!("{key}={value}");
+/// }
+/// ```
 pub fn from_read<R: Read>(read: R) -> Result<Dotenv> {
     let mut buf = String::new();
     let mut reader = io::BufReader::new(read);
