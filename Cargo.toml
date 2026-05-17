@@ -7,8 +7,11 @@ homepage = "https://github.com/arniu/dotenvs-rs"
 keywords = ["environment", "env", "dotenv", "config"]
 include = ["/src", "/tests", "LICENSE.md"]
 license = "MIT"
-
 edition = "2021"
+
+[package.metadata.release]
+tag-name = "v{{version}}"
+push = true
 
 [lib]
 name = "dotenv"
