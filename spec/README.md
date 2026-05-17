@@ -1,65 +1,29 @@
-# dotenv
+# dotenv Specification
 
-## 参考实现
+## History
 
-- [dotenv for JS][dotenv-js]
-- [dotenv-expand for JS][dotenv-expand-js]
-- [dotenv for Python][dotenv-python]
-- [posix shell][posix-shell]
+The dotenv format originated from Heroku's [Twelve-Factor App](https://12factor.net/config) methodology (2012), which advocates storing configuration in environment variables. The `.env` file allows developers to simulate production environment variables locally.
 
-[dotenv-js]: https://www.npmjs.com/package/dotenv
-[dotenv-expand-js]: https://www.npmjs.com/package/dotenv-expand
-[dotenv-python]: https://pypi.org/project/python-dotenv/
-[posix-shell]: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
+The first implementation was [bkeepers/dotenv](https://github.com/bkeepers/dotenv) for Ruby (2013). Later, motdotla rewrote it in JavaScript as [motdotla/dotenv](https://github.com/motdotla/dotenv), which became the standard in the Node.js ecosystem and a widely ported reference implementation across languages.
 
-## dotenv for JS
+## Current Status
 
-```js
-const LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg
-```
+dotenv has no official standard like an RFC. Implementation rules vary slightly between languages and tools, but the core syntax is largely consistent.
 
-## dotenv for Python
+Since Node.js v20.6.0 (stable since v20.12.0), `--env-file` support has been built in, with the parser implemented in C++ (`src/node_dotenv.cc`). Its behavior differs slightly from npm dotenv.
 
-```python
-def make_regex(string: str, extra_flags: int = 0) -> Pattern[str]:
-    return re.compile(string, re.UNICODE | extra_flags)
+## Specs in This Directory
 
+| File | Description |
+|------|-------------|
+| [`dotenv`](dotenv) | Language specification. Adds variable substitution (`$VAR` / `${VAR:-default}`) and multi-line values to the basic dotenv format. Key charset follows POSIX shell convention (`[A-Za-z_][A-Za-z0-9_]*`). Semantics follow POSIX shell for quoting (expansion in double quotes, literal in single quotes); backtick-quoted values are literal (unlike POSIX shell). |
+| [`dotenv-node.abnf`](dotenv-node.abnf) | [npm dotenv](https://github.com/motdotla/dotenv) (motdotla/dotenv v16.x) implementation spec. Based on per-line regex matching, no variable substitution. Appendix compares differences with Node.js built-in `parseEnv`. |
+| [`README.md`](README.md) | This file. |
 
-_newline = make_regex(r"(\r\n|\n|\r)")
-_multiline_whitespace = make_regex(r"\s*", extra_flags=re.MULTILINE)
-_whitespace = make_regex(r"[^\S\r\n]*")
-_export = make_regex(r"(?:export[^\S\r\n]+)?")
-_single_quoted_key = make_regex(r"'([^']+)'")
-_unquoted_key = make_regex(r"([^=\#\s]+)")
-_equal_sign = make_regex(r"(=[^\S\r\n]*)")
-_single_quoted_value = make_regex(r"'((?:\\'|[^'])*)'")
-_double_quoted_value = make_regex(r'"((?:\\"|[^"])*)"')
-_unquoted_value = make_regex(r"([^\r\n]*)")
-_comment = make_regex(r"(?:[^\S\r\n]*#[^\r\n]*)?")
-_end_of_line = make_regex(r"[^\S\r\n]*(?:\r\n|\n|\r|$)")
-_rest_of_line = make_regex(r"[^\r\n]*(?:\r|\n|\r\n)?")
-_double_quote_escapes = make_regex(r"\\[\\'\"abfnrtv]")
-_single_quote_escapes = make_regex(r"\\[\\']")
-```
+### Key Reference Implementations
 
-## dotenv for Ruby
-
-```ruby
-LINE = /
-      (?:^|\A)              # beginning of line
-      \s*                   # leading whitespace
-      (?:export\s+)?        # optional export
-      ([\w.]+)              # key
-      (?:\s*=\s*?|:\s+?)    # separator
-      (                     # optional value begin
-        \s*'(?:\\'|[^'])*'  #   single quoted value
-        |                   #   or
-        \s*"(?:\\"|[^"])*"  #   double quoted value
-        |                   #   or
-        [^\#\r\n]+          #   unquoted value
-      )?                    # value end
-      \s*                   # trailing whitespace
-      (?:\#.*)?             # optional comment
-      (?:$|\z)              # end of line
-    /x
-```
+- **npm dotenv**: [motdotla/dotenv](https://github.com/motdotla/dotenv)
+- **dotenv-expand**: [motdotla/dotenv-expand](https://github.com/motdotla/dotenv-expand)
+- **Node.js built-in**: `process.loadEnvFile()` / `--env-file`, parser at [src/node_dotenv.cc](https://github.com/nodejs/node/blob/main/src/node_dotenv.cc)
+- **Python**: [theskumar/python-dotenv](https://github.com/theskumar/python-dotenv)
+- **Ruby**: [bkeepers/dotenv](https://github.com/bkeepers/dotenv)
