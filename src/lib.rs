@@ -1,11 +1,37 @@
-#![doc = include_str!("../README.md")]
+//! Load and use environment variables from `.env` files.
+//!
+//! # Overview
+//!
+//! This crate parses `.env` files with variable substitution support:
+//! `$VAR`, `${VAR}`, `${VAR:-default}`. It provides both convenience
+//! functions (for typical usage) and a builder-style [`Dotenv`] type
+//! (for fine-grained control).
+//!
+//! # Quick start
+//!
+//! ```no_run
+//! dotenv::load().ok();
+//!
+//! for (key, value) in dotenv::vars() {
+//!     println!("{key}={value}");
+//! }
+//! ```
+//!
+//! # Available entry points
+//!
+//! | Task | Function / Type |
+//! |---|---|
+//! | Load `.env` automatically | [`load()`], [`var()`], [`vars()`] |
+//! | Load a specific file | [`from_path()`], [`from_filename()`] |
+//! | Load from a custom source | [`from_read()`] |
+//! | Builder with control over behaviour | [`Dotenv`] |
 
 mod dotenv;
-mod errors;
+mod error;
 mod parse;
 
 pub use crate::dotenv::Dotenv;
-pub use crate::errors::Error;
+pub use crate::error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
 use std::env;

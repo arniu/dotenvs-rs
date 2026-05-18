@@ -2,11 +2,14 @@
 name = "dotenvs"
 version = "0.2.1"
 description = "A correct dotenv library"
+documentation = "https://docs.rs/dotenvs"
 repository = "https://github.com/arniu/dotenvs-rs"
-homepage = "https://github.com/arniu/dotenvs-rs"
 keywords = ["environment", "env", "dotenv", "config"]
-include = ["/src", "/tests", "LICENSE.md"]
+categories = ["config"]
+rust-version = "1.65"
+readme = "README.md"
 license = "MIT"
+include = ["/src", "/tests", "LICENSE"]
 edition = "2021"
 
 [package.metadata.release]
