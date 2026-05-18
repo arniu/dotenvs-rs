@@ -1,6 +1,6 @@
 [package]
 name = "dotenvs"
-version = "0.2.1"
+version = "0.2.2"
 description = "A correct dotenv library"
 documentation = "https://docs.rs/dotenvs"
 repository = "https://github.com/arniu/dotenvs-rs"
