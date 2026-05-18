@@ -25,7 +25,7 @@
 
 dotenv-file    = *( blank-line / comment-line / kv-line )
 
-kv-line        = [ export ] key sep [ value ] [ inline-comment ]
+kv-line        = [ export ] key separator [ value ] [ inline-comment ]
                  line-ending
 
 blank-line     = line-ending
@@ -82,20 +82,20 @@ DIGIT          = %x30-39               ; 0-9
 ; 6.  Separator
 ; ============================================================
 
-sep            = *WSP "=" *WSP
+separator      = *WSP "=" *WSP
 
 ; ============================================================
 ; 7.  Value
 ; ============================================================
 
-value          = single-valued / double-valued / backtick-val / unquoted-valued
+value          = single-quoted / double-quoted / backtick-quoted / unquoted
 
 ; If no value is present (end-of-line after separator), the value
 ; is the empty string.  e.g.  EMPTY=
 
 ; ---- 7.1  Single-Quoted — literal, no substitution ----
 
-single-valued  = "'" *single-char "'"
+single-quoted  = "'" *single-char "'"
 single-char    = %x00-26 / %x28-10FFFF
                ; any character except "'" (%x27)
                ; includes newlines — supports multi-line values
@@ -104,12 +104,12 @@ single-char    = %x00-26 / %x28-10FFFF
 
 ; ---- 7.2  Double-Quoted — substitution enabled, escapes ----
 
-double-valued  = DQUOTE *double-char DQUOTE
-double-char    = escape-seq
+double-quoted  = DQUOTE *double-char DQUOTE
+double-char    = escape-sequence
                / substitution
                / double-literal
 
-escape-seq     = %x5C ( "n" / "r" / "\" / "$" )
+escape-sequence     = %x5C ( "n" / "r" / "\" / "$" )
                ; \n → LF  \r → CR  \\ → \  \$ → $
 
 double-literal = %x00-21 / %x23 / %x25-5B / %x5D-10FFFF
@@ -123,7 +123,7 @@ DQUOTE         = %x22    ; double quote character
 
 ; ---- 7.3  Backtick-Quoted — literal, no substitution ----
 
-backtick-val   = "`" *backtick-char "`"
+backtick-quoted   = "`" *backtick-char "`"
 backtick-char  = %x00-5F / %x61-10FFFF
                ; any character except "`" (%x60)
                ; includes newlines — supports multi-line values
@@ -132,7 +132,7 @@ backtick-char  = %x00-5F / %x61-10FFFF
 
 ; ---- 7.4  Unquoted — substitution enabled, single-line ----
 
-unquoted-valued = 1*unquoted-char
+unquoted = 1*unquoted-char
 
 unquoted-char  = unquoted-escape
                / substitution
@@ -191,8 +191,8 @@ fallback-char  = %x00-23 / %x25-7A / %x7C / %x7E-10FFFF
 
 ; Escaped "$":  \$  produces a literal "$".
 ; In unquoted values  :  \$ → $
-; In double-quoted     :  \$ → $  (via escape-seq)
-; In single-quoted     :  \$ → \$ (literal, no processing)
+; In double-quoted    :  \$ → $  (via escape-sequence)
+; In single-quoted    :  \$ → \$ (literal, no processing)
 
 ; ============================================================
 ; A.  Processing Rules (Consumer)
