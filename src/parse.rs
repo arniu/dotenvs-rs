@@ -55,7 +55,7 @@ fn key<'a>(input: &mut &'a str) -> winnow::Result<&'a str> {
 
 // ---- §6 separator = *WSP "=" *WSP ----
 
-fn separator<'a>(input: &mut &'a str) -> winnow::Result<()> {
+fn separator(input: &mut &str) -> winnow::Result<()> {
     (space0, "=", space0).void().parse_next(input)
 }
 
